@@ -111,4 +111,4 @@ release version:
 
     echo ""
     echo "CI is building artifacts and will create a draft release."
-    echo "Publish at: https://github.com/arthurlechte/wavesplit/releases"
+    echo "Publish at: https://github.com/asawo/wavesplit/releases"

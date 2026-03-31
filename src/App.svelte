@@ -7,10 +7,12 @@
 
   let tracks = $state([])
   let refreshTracks = $state(null)
-  let ready = $state(false)   // true once demucs is available
+  let checked = $state(false)  // true once check_demucs has responded
+  let ready = $state(false)    // true if demucs is available
 
   onMount(async () => {
     ready = await invoke('check_demucs')
+    checked = true
   })
 
   function handleAdded(_id) {
@@ -18,10 +20,14 @@
   }
 </script>
 
-{#if !ready}
-  <Setup onReady={() => ready = true} />
+{#if !checked}
+  <!-- wait for check_demucs before rendering anything -->
+{:else if !ready}
+  <div class="fade-in">
+    <Setup onReady={() => ready = true} />
+  </div>
 {:else}
-  <div class="app">
+  <div class="app fade-in">
     <header>
       <h1>Wavesplit</h1>
     </header>
@@ -61,6 +67,15 @@
     --color-error: #ff6b6b;
     --color-processing: #f0a030;
     --color-ready: #4caf72;
+  }
+
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+
+  :global(.fade-in) {
+    animation: fade-in 0.15s ease-out both;
   }
 
   :global(body) {

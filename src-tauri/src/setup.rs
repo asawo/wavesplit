@@ -3,7 +3,7 @@ use futures_util::StreamExt;
 use tauri::{AppHandle, Emitter};
 
 /// Update this to your GitHub repo (owner/name).
-const GITHUB_REPO: &str = "arthurlechte/wavesplit";
+const GITHUB_REPO: &str = "asawo/wavesplit";
 const RELEASE_TAG: &str = "demucs-sidecar";
 
 fn asset_name() -> &'static str {
