@@ -1,6 +1,6 @@
 # Wavesplit
 
-<img width="912" height="712" alt="Screenshot 2026-03-31 at 20 01 17" src="https://github.com/user-attachments/assets/1db258ee-9cfd-4a82-aee4-e63c59664bd6" />
+<img width="500" alt="wavesplit screenshot" src="https://github.com/user-attachments/assets/1db258ee-9cfd-4a82-aee4-e63c59664bd6" />
 
 A desktop app for musicians to practice with isolated stems. Give it a YouTube URL or a local audio file - it separates the audio into bass, drums, vocals, and other, and lets you export the stems for use in a DAW or practice session.
 
