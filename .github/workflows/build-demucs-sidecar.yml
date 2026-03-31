@@ -43,6 +43,7 @@ jobs:
 
       - name: Freeze with PyInstaller
         working-directory: src/analysis
+        shell: bash
         run: |
           pyinstaller \
             --onefile \
