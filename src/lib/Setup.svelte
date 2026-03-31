@@ -36,7 +36,7 @@
     <h2>One-time setup</h2>
     <p class="description">
       Wavesplit needs ML components to separate audio into stems.
-      This is a one-time download (~400–700 MB) and only happens once.
+      This is a one-time download (~110–235 MB) and only happens once.
     </p>
 
     {#if error}
