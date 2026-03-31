@@ -1,0 +1,71 @@
+name: Build Demucs Sidecar
+
+# Run manually or when the Python dependencies change.
+# Produces per-platform frozen binaries and uploads them to the
+# "demucs-sidecar" release so the app can download them at first run.
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'src/analysis/pyproject.toml'
+      - 'src/analysis/demucs_runner.py'
+
+jobs:
+  build:
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: aarch64-apple-darwin
+          - os: macos-latest
+            target: x86_64-apple-darwin
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # CPU-only torch is ~200MB installed vs ~2GB for GPU builds.
+      # Demucs runs fine on CPU — just slower than GPU.
+      - name: Install CPU-only PyTorch
+        run: |
+          pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
+
+      - name: Install demucs + PyInstaller
+        run: pip install demucs pyinstaller
+
+      - name: Freeze with PyInstaller
+        working-directory: src/analysis
+        run: |
+          pyinstaller \
+            --onefile \
+            --collect-all demucs \
+            --name demucs-${{ matrix.target }} \
+            demucs_runner.py
+
+      # Ensure the release exists, then upload (--clobber replaces existing assets).
+      - name: Upload to sidecar release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          gh release view demucs-sidecar 2>/dev/null || \
+            gh release create demucs-sidecar \
+              --title "Demucs Sidecar Binaries" \
+              --notes "Auto-built frozen demucs binaries. The app downloads these on first run. Do not delete." \
+              --prerelease
+
+          gh release upload demucs-sidecar \
+            src/analysis/dist/demucs-${{ matrix.target }}* \
+            --clobber

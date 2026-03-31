@@ -1,32 +1,44 @@
 <script>
+  import { invoke } from '@tauri-apps/api/core'
+  import { onMount } from 'svelte'
   import AddTrack from './lib/AddTrack.svelte'
   import TrackList from './lib/TrackList.svelte'
+  import Setup from './lib/Setup.svelte'
 
   let tracks = $state([])
   let refreshTracks = $state(null)
+  let ready = $state(false)   // true once demucs is available
+
+  onMount(async () => {
+    ready = await invoke('check_demucs')
+  })
 
   function handleAdded(_id) {
     refreshTracks?.()
   }
 </script>
 
-<div class="app">
-  <header>
-    <h1>Wavesplit</h1>
-  </header>
+{#if !ready}
+  <Setup onReady={() => ready = true} />
+{:else}
+  <div class="app">
+    <header>
+      <h1>Wavesplit</h1>
+    </header>
 
-  <main>
-    <section class="add-section">
-      <p class="section-label">Add track</p>
-      <AddTrack onAdded={handleAdded} />
-    </section>
+    <main>
+      <section class="add-section">
+        <p class="section-label">Add track</p>
+        <AddTrack onAdded={handleAdded} />
+      </section>
 
-    <section class="list-section">
-      <p class="section-label">Library</p>
-      <TrackList bind:tracks bind:refresh={refreshTracks} />
-    </section>
-  </main>
-</div>
+      <section class="list-section">
+        <p class="section-label">Library</p>
+        <TrackList bind:tracks bind:refresh={refreshTracks} />
+      </section>
+    </main>
+  </div>
+{/if}
 
 <style>
   :global(*) {

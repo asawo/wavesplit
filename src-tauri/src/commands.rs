@@ -71,8 +71,9 @@ async fn add_track(
     // Spawn pipeline in background
     let db = Arc::clone(&state.db);
     let data_dir = state.data_dir.clone();
+    let demucs_dir = state.demucs_dir.clone();
     let track_id = id.clone();
-    tokio::spawn(pipeline::run(track_id, source, db, data_dir, app));
+    tokio::spawn(pipeline::run(track_id, source, db, data_dir, demucs_dir, app));
 
     Ok(id)
 }

@@ -48,7 +48,7 @@ jobs:
         with:
           workspaces: src-tauri
 
-      - name: Install Linux dependencies
+      - name: Install Linux system dependencies
         if: matrix.os == 'ubuntu-22.04'
         run: |
           sudo apt-get update
@@ -57,6 +57,51 @@ jobs:
             libappindicator3-dev \
             librsvg2-dev \
             patchelf
+
+      # ── Sidecar binaries ──────────────────────────────────────────────────────
+      # Tauri bundles these next to the executable at install time.
+      # Files must be named {binary}-{target-triple}[.exe] before the build.
+
+      - name: Download sidecar binaries (macOS)
+        if: matrix.os == 'macos-latest'
+        run: |
+          mkdir -p src-tauri/binaries
+          # yt-dlp (universal macOS binary works for both arm64 and x86_64)
+          curl -fsSL https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos \
+            -o src-tauri/binaries/yt-dlp-${{ matrix.target }}
+          chmod +x src-tauri/binaries/yt-dlp-${{ matrix.target }}
+          # ffmpeg
+          brew install ffmpeg
+          cp "$(which ffmpeg)" src-tauri/binaries/ffmpeg-${{ matrix.target }}
+
+      - name: Download sidecar binaries (Linux)
+        if: matrix.os == 'ubuntu-22.04'
+        run: |
+          mkdir -p src-tauri/binaries
+          # yt-dlp
+          curl -fsSL https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp \
+            -o src-tauri/binaries/yt-dlp-${{ matrix.target }}
+          chmod +x src-tauri/binaries/yt-dlp-${{ matrix.target }}
+          # ffmpeg (already installed via system dependencies above)
+          cp "$(which ffmpeg)" src-tauri/binaries/ffmpeg-${{ matrix.target }}
+
+      - name: Download sidecar binaries (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path src-tauri/binaries | Out-Null
+          # yt-dlp
+          Invoke-WebRequest -Uri "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe" `
+            -OutFile "src-tauri/binaries/yt-dlp-${{ matrix.target }}.exe"
+          # ffmpeg — BtbN static build
+          Invoke-WebRequest -Uri "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip" `
+            -OutFile ffmpeg.zip
+          Expand-Archive ffmpeg.zip -DestinationPath ffmpeg_tmp
+          $ffmpegExe = Get-ChildItem -Path ffmpeg_tmp -Filter ffmpeg.exe -Recurse | Select-Object -First 1
+          Copy-Item $ffmpegExe.FullName "src-tauri/binaries/ffmpeg-${{ matrix.target }}.exe"
+          Remove-Item ffmpeg.zip, ffmpeg_tmp -Recurse -Force
+
+      # ─────────────────────────────────────────────────────────────────────────
 
       - name: Install frontend dependencies
         run: pnpm install

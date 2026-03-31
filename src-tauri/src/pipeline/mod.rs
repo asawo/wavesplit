@@ -1,4 +1,5 @@
 mod analysis;
+pub mod bins;
 pub mod download;
 mod stems;
 
@@ -8,6 +9,7 @@ use tauri::{AppHandle, Emitter};
 
 use crate::db;
 use crate::paths;
+use crate::setup;
 
 const EVENT: &str = "pipeline";
 
@@ -36,11 +38,13 @@ pub async fn run(
     source: Source,
     db: Arc<Mutex<Connection>>,
     data_dir: std::path::PathBuf,
+    demucs_dir: std::path::PathBuf,
     app: AppHandle,
 ) {
     let source_wav = paths::source_wav(&data_dir, &track_id);
     let stems_dir = paths::stems_dir(&data_dir, &track_id);
-    let analysis_dir = paths::analysis_dir(&data_dir, &track_id);
+    let demucs_bin = setup::binary_path(&demucs_dir);
+    let cache_dir = setup::cache_dir(&demucs_dir);
 
     // --- Stage 1: download ---
     emit(&app, &track_id, "download", "started", None);
@@ -71,7 +75,7 @@ pub async fn run(
     let stems_result = tokio::task::spawn_blocking({
         let source_wav = source_wav.clone();
         let stems_dir = stems_dir.clone();
-        move || stems::separate(&source_wav, &stems_dir)
+        move || stems::separate(&source_wav, &stems_dir, &demucs_bin, &cache_dir)
     })
     .await
     .unwrap_or_else(|e| Err(e.to_string()));
@@ -89,25 +93,6 @@ pub async fn run(
     }
 
     // TODO: re-enable analysis once beat/note detection is ready (MVP v2)
-    // emit(&app, &track_id, "analysis", "started", None);
-    // let analysis_result = tokio::task::spawn_blocking({
-    //     let stems_dir = stems_dir.clone();
-    //     let analysis_dir = analysis_dir.clone();
-    //     move || analysis::run(&stems_dir, &analysis_dir)
-    // })
-    // .await
-    // .unwrap_or_else(|e| Err(e.to_string()));
-    // {
-    //     let conn = db.lock().unwrap();
-    //     match &analysis_result {
-    //         Ok(_) => { let _ = db::update_status(&conn, &conn, "status_analysis", "done", None); }
-    //         Err(e) => { let _ = db::update_status(&conn, &track_id, "status_analysis", "error", Some(e)); }
-    //     }
-    // }
-    // match analysis_result {
-    //     Ok(_) => emit(&app, &track_id, "analysis", "done", None),
-    //     Err(e) => emit(&app, &track_id, "analysis", "error", Some(e)),
-    // }
     {
         let conn = db.lock().unwrap_or_else(|e| e.into_inner());
         let _ = db::update_status(&conn, &track_id, "status_analysis", "done", None);

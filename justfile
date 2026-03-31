@@ -8,12 +8,33 @@ default:
 install:
     pnpm install
 
+# Copy system yt-dlp and ffmpeg into src-tauri/binaries/ for local dev.
+# Tauri requires externalBin files to exist at build time even in dev mode.
+setup-bins:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    TARGET=$(rustc -vV | grep 'host:' | awk '{print $2}')
+    BIN_DIR=src-tauri/binaries
+    mkdir -p "$BIN_DIR"
+    for tool in yt-dlp ffmpeg; do
+        dest="$BIN_DIR/${tool}-${TARGET}"
+        if [ ! -f "$dest" ]; then
+            src=$(which "$tool" 2>/dev/null || true)
+            if [ -z "$src" ]; then
+                echo "ERROR: $tool not found — install with: brew install $tool"
+                exit 1
+            fi
+            cp "$src" "$dest"
+            echo "copied $src → $dest"
+        fi
+    done
+
 # Start dev server (hot reload)
-dev:
+dev: setup-bins
     pnpm run tauri dev
 
 # Build release binary + installer
-build:
+build: setup-bins
     pnpm run tauri build
 
 # Build Rust only (no frontend)
