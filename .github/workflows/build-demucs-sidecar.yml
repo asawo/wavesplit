@@ -5,10 +5,6 @@ name: Build Demucs Sidecar
 # "demucs-sidecar" release so the app can download them at first run.
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - 'src/analysis/pyproject.toml'
-      - 'src/analysis/demucs_runner.py'
 
 jobs:
   build:
