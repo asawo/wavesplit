@@ -1,70 +1,100 @@
 # Wavesplit
 
-A cross-platform desktop practice app built with Tauri (Rust backend + webview UI).
+A cross-platform desktop practice app built with Tauri (Rust backend + Svelte frontend).
 
-## What it does
+## What it does (current state)
 
 - Accepts a YouTube URL or local audio file
-- Extracts and separates audio into stems (bass, drums, vocals, other) via Demucs
-- Analyzes musical structure: notes, chords, beats, bars (all **precomputed**, not live)
-- Plays stems with synchronized visual overlays for practice
+- Downloads/converts audio to WAV (yt-dlp + ffmpeg)
+- Separates into stems: bass, drums, vocals, other (Demucs via Poetry)
+- Manages a library of tracks with metadata (title, artist)
+- Exports stems + original audio to a user-chosen folder
+- Analysis stage is **stubbed out** — marked done immediately, no actual beat/note detection yet (TODO: MVP v2)
 
-Primary use case: bass player practice with isolated stems and synchronized note/chord display.
+Primary use case: bass player practice with isolated stems.
 
 ## Architecture
 
 ```
-UI (Tauri webview)
-  → Rust backend
-    → yt-dlp / ffmpeg / demucs  (external sidecars)
-    → stems (audio files)
-    → analysis (JSON files)
-
-Playback: audio time → lookup JSON → update UI
+UI (Svelte 5 / Tauri webview)
+  → Rust backend (Tauri commands + async pipeline)
+    → yt-dlp        (YouTube download)
+    → ffmpeg         (WAV conversion)
+    → Demucs         (stem separation, via `poetry run demucs`)
+    → SQLite         (track metadata, bundled via rusqlite)
 ```
 
-## Pipeline
+## Pipeline stages
 
-1. Input: YouTube URL (via yt-dlp) or local audio file
-2. Extract audio → convert to WAV (ffmpeg)
-3. Separate stems: bass, drums, vocals, other (Demucs)
-4. Analyze:
-   - Drums → beat tracking, downbeat detection, bar segmentation
-   - Bass/vocals/other → note detection, chord estimation (aligned to beat grid)
-5. Store results as JSON
-6. UI plays audio + syncs with precomputed JSON
-
-## Data model
-
-**Timing grid** (from drums):
-```json
-{ "tempo": 120, "beats": [...], "bars": [{ "bar": 12, "beat": 3, "time": 45.23 }] }
+```
+add_track(source)
+  → 1. download     yt-dlp or ffmpeg → source.wav
+  → 2. stems        Demucs → stems/{bass,drums,vocals,other}.wav
+  → 3. analysis     STUBBED — sets status_analysis=done immediately
 ```
 
-**Stem annotations**:
-```json
-{ "bass": [{ "time": 45.23, "stem": "bass", "note": "A2", "chord": "Am" }], "vocals": [...], "other": [...] }
-```
+Each stage updates the DB and emits a `pipeline` Tauri event `{ track_id, stage, status, message }` for frontend progress display.
+
+## Key source files
+
+| File | Purpose |
+|------|---------|
+| `src-tauri/src/lib.rs` | App entry point, AppState, command registration |
+| `src-tauri/src/db.rs` | SQLite schema, migrations, all CRUD |
+| `src-tauri/src/paths.rs` | Path helpers (track_dir, stems_dir, source_wav, etc.) |
+| `src-tauri/src/commands.rs` | Tauri commands: add_track_youtube/local, export_stems, update_track_meta, open_folder |
+| `src-tauri/src/pipeline/mod.rs` | Async pipeline orchestrator (download → stems → analysis) |
+| `src-tauri/src/pipeline/download.rs` | yt-dlp and ffmpeg subprocess wrappers |
+| `src-tauri/src/pipeline/stems.rs` | Demucs subprocess, flattens output into stems/ |
+| `src-tauri/src/pipeline/analysis.rs` | Analysis runner (currently unused; project_dir() is reused by stems.rs) |
+| `src/App.svelte` | Root layout, CSS variables, section structure |
+| `src/lib/AddTrack.svelte` | YouTube URL input + local file picker |
+| `src/lib/TrackList.svelte` | Library: filter, sort, inline edit, progress, export, delete |
+| `src/analysis/analyze.py` | Python analysis script (not called yet) |
+| `src/analysis/pyproject.toml` | Poetry project: librosa, numpy, demucs (torch 2.6.0) |
+
+## Data model (SQLite)
+
+Track columns: `id, title, artist, source_type, source_url, source_path, created_at, sort_order, duration_ms, status_download, status_stems, status_analysis, error_message, export_path`
+
+Status values: `pending | done | error`
+
+Migrations are additive via `.ok()` on `ALTER TABLE` in `db::open()`.
 
 ## Stack
 
-- **Backend**: Rust (Tauri) — orchestrates pipeline, runs external tools, emits progress events, manages filesystem
-- **Frontend**: Web (Tauri webview) — Web Audio API for playback, sync UI to current time, stem mute/solo, seeking, loop sections
-- **External tools** (bundled as sidecars): yt-dlp, ffmpeg, demucs
-- **Analysis**: Python (initial), called from Rust
+- **Backend**: Rust (Tauri 2) — tokio async, rusqlite (bundled SQLite), uuid, chrono
+- **Frontend**: Svelte 5 (runes), Vite, pnpm
+- **External tools**: yt-dlp, ffmpeg (system install); demucs (via Poetry venv in `src/analysis/`)
+- **Analysis**: Python 3.11+, Poetry, librosa, numpy, demucs
+
+## Dev setup
+
+```sh
+brew install yt-dlp ffmpeg poetry
+cd src/analysis && poetry install
+pnpm install
+just dev        # or: pnpm run tauri dev
+```
+
+## Important behaviours
+
+- `analysis::project_dir()` walks 4 parent levels up from the binary to find `src/analysis/` — works in dev, will need revisiting for production packaging
+- Demucs is invoked via `poetry run demucs` with `current_dir` set to the analysis project
+- `list_tracks` returns newest-first (`ORDER BY sort_order DESC`)
+- On startup, `incomplete_tracks()` logs any tracks with unfinished pipeline state (not auto-retried)
 
 ## Scope
 
-| Phase    | Features |
-|----------|----------|
-| MVP      | YouTube/local input, stem separation, playback + sync |
-| MVP v2   | Bass note display, basic beat tracking |
-| Later    | Chords, multi-stem analysis, improved UI, editing/looping |
+| Phase   | Status | Features |
+|---------|--------|----------|
+| MVP     | Done   | YouTube/local input, stem separation, library, export |
+| MVP v2  | Next   | Playback engine, beat tracking, bass note display |
+| Later   | —      | Chords, stem mute/solo, loop sections, waveform view |
 
 ## Key constraints
 
 - Bass accuracy is the top priority
-- Chord detection is approximate / best-effort
-- Beat/bar grid optimized for common time (4/4)
 - No real-time ML during playback — precompute everything
-- Packaging: Tauri build system, platform-specific installers
+- All analysis precomputed and stored as JSON
+- Beat/bar grid optimized for common time (4/4)

@@ -14,7 +14,7 @@ pub fn separate(source_wav: &Path, stems_dir: &Path) -> Result<(), String> {
     std::fs::create_dir_all(&tmp).map_err(|e| format!("mkdir demucs_tmp: {e}"))?;
 
     let project_dir = analysis::project_dir();
-    let status = Command::new("poetry")
+    let output = Command::new("poetry")
         .args([
             "run", "demucs",
             "--name", "htdemucs",
@@ -22,11 +22,12 @@ pub fn separate(source_wav: &Path, stems_dir: &Path) -> Result<(), String> {
             source_wav.to_str().ok_or("invalid source_wav path")?,
         ])
         .current_dir(&project_dir)
-        .status()
+        .output()
         .map_err(|e| format!("poetry/demucs not found or failed to start: {e}"))?;
 
-    if !status.success() {
-        return Err(format!("demucs exited with status {status}"));
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("demucs failed: {stderr}"));
     }
 
     // Demucs output: tmp/htdemucs/<filename_without_ext>/{bass,drums,vocals,other}.wav

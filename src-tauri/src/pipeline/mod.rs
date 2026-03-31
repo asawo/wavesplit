@@ -55,7 +55,7 @@ pub async fn run(
     .unwrap_or_else(|e| Err(e.to_string()));
 
     {
-        let conn = db.lock().unwrap();
+        let conn = db.lock().unwrap_or_else(|e| e.into_inner());
         match &dl_result {
             Ok(_) => { let _ = db::update_status(&conn, &track_id, "status_download", "done", None); }
             Err(e) => { let _ = db::update_status(&conn, &track_id, "status_download", "error", Some(e)); }
@@ -77,7 +77,7 @@ pub async fn run(
     .unwrap_or_else(|e| Err(e.to_string()));
 
     {
-        let conn = db.lock().unwrap();
+        let conn = db.lock().unwrap_or_else(|e| e.into_inner());
         match &stems_result {
             Ok(_) => { let _ = db::update_status(&conn, &track_id, "status_stems", "done", None); }
             Err(e) => { let _ = db::update_status(&conn, &track_id, "status_stems", "error", Some(e)); }
@@ -109,7 +109,7 @@ pub async fn run(
     //     Err(e) => emit(&app, &track_id, "analysis", "error", Some(e)),
     // }
     {
-        let conn = db.lock().unwrap();
+        let conn = db.lock().unwrap_or_else(|e| e.into_inner());
         let _ = db::update_status(&conn, &track_id, "status_analysis", "done", None);
     }
     emit(&app, &track_id, "analysis", "done", None);

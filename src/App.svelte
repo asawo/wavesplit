@@ -12,15 +12,17 @@
 
 <div class="app">
   <header>
-    <h1>wavesplit</h1>
+    <h1>Wavesplit</h1>
   </header>
 
   <main>
     <section class="add-section">
+      <p class="section-label">Add track</p>
       <AddTrack onAdded={handleAdded} />
     </section>
 
     <section class="list-section">
+      <p class="section-label">Library</p>
       <TrackList bind:tracks bind:refresh={refreshTracks} />
     </section>
   </main>
@@ -31,12 +33,13 @@
     box-sizing: border-box;
   }
 
-  :global(:root) {
+:global(:root) {
     --bg: #1a1a1a;
+    --bg-panel: #202020;
     --bg-input: #2a2a2a;
     --bg-button: #2a2a2a;
     --bg-button-hover: #363636;
-    --bg-track: #222;
+    --bg-track: #252525;
     --bg-track-ready: #1e2a1e;
     --bg-track-error: #2a1e1e;
     --fg: #e8e8e8;
@@ -45,6 +48,7 @@
     --accent: #4a9eff;
     --color-error: #ff6b6b;
     --color-processing: #f0a030;
+    --color-ready: #4caf72;
   }
 
   :global(body) {
@@ -70,10 +74,10 @@
 
   h1 {
     margin: 0;
-    font-size: 16px;
-    font-weight: 600;
-    letter-spacing: 0.05em;
-    color: var(--accent);
+    font-size: 24px;
+    font-family: 'Oleo Script Swash Caps', cursive;
+    font-weight: 400;
+    color: var(--color-ready);
   }
 
   main {
@@ -82,15 +86,29 @@
     flex: 1;
     overflow: hidden;
     padding: 16px 20px;
-    gap: 16px;
+    gap: 20px;
+  }
+
+  .section-label {
+    margin: 0 0 8px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--fg-muted);
   }
 
   .add-section {
     flex-shrink: 0;
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
   }
 
   .list-section {
     flex: 1;
     overflow-y: auto;
+    min-height: 0;
   }
 </style>

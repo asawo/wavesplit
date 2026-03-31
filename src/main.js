@@ -1,3 +1,4 @@
+import '@fontsource/oleo-script-swash-caps'
 import { mount } from 'svelte'
 import App from './App.svelte'
 

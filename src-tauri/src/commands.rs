@@ -48,7 +48,7 @@ async fn add_track(
 
     // Insert DB row
     {
-        let conn = state.db.lock().unwrap();
+        let conn = state.db.lock().map_err(|_| "database unavailable".to_string())?;
         let order = db::next_sort_order(&conn).map_err(|e| e.to_string())?;
         db::insert_track(&conn, &Track {
             id: id.clone(),
@@ -83,6 +83,14 @@ pub fn export_stems(track_id: String, dest_dir: String, state: tauri::State<'_, 
     let dest = std::path::PathBuf::from(&dest_dir);
 
     let mut exported = Vec::new();
+
+    let source_wav = paths::source_wav(&state.data_dir, &track_id);
+    if source_wav.exists() {
+        let dst = dest.join("original.wav");
+        std::fs::copy(&source_wav, &dst).map_err(|e| format!("failed to copy original.wav: {e}"))?;
+        exported.push("original.wav".to_string());
+    }
+
     for stem in &["bass", "drums", "vocals", "other"] {
         let src = stems_dir.join(format!("{stem}.wav"));
         if src.exists() {
@@ -96,7 +104,7 @@ pub fn export_stems(track_id: String, dest_dir: String, state: tauri::State<'_, 
         return Err("No stem files found for this track".into());
     }
 
-    let conn = state.db.lock().unwrap();
+    let conn = state.db.lock().map_err(|_| "database unavailable".to_string())?;
     db::set_export_path(&conn, &track_id, &dest_dir).map_err(|e| e.to_string())?;
 
     Ok(exported)
@@ -109,7 +117,7 @@ pub fn update_track_meta(
     artist: Option<String>,
     state: tauri::State<'_, AppState>,
 ) -> Result<(), String> {
-    let conn = state.db.lock().unwrap();
+    let conn = state.db.lock().map_err(|_| "database unavailable".to_string())?;
     db::update_track_meta(&conn, &id, &title, artist.as_deref()).map_err(|e| e.to_string())
 }
 

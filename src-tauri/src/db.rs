@@ -61,7 +61,7 @@ pub fn list_tracks(conn: &Connection) -> Result<Vec<Track>> {
     let mut stmt = conn.prepare(
         "SELECT id, title, source_type, source_url, source_path, created_at, sort_order, duration_ms,
                 status_download, status_stems, status_analysis, error_message, export_path, artist
-         FROM tracks ORDER BY sort_order ASC",
+         FROM tracks ORDER BY sort_order DESC",
     )?;
     let tracks = stmt.query_map([], |row| {
         Ok(Track {

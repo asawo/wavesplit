@@ -10,6 +10,35 @@
   // pipeline events keyed by track id: { stage, status, message }
   let progress = $state({})
 
+  let filterQuery = $state('')
+  let sortKey = $state('newest')
+
+  function fuzzy(query, target) {
+    query = query.toLowerCase()
+    target = target.toLowerCase()
+    let qi = 0
+    for (let i = 0; i < target.length && qi < query.length; i++) {
+      if (target[i] === query[qi]) qi++
+    }
+    return qi === query.length
+  }
+
+  function matchesFilter(track) {
+    if (!filterQuery) return true
+    return fuzzy(filterQuery, track.title) || fuzzy(filterQuery, track.artist ?? '')
+  }
+
+  const SORT_FNS = {
+    newest: (a, b) => b.sort_order - a.sort_order,
+    oldest: (a, b) => a.sort_order - b.sort_order,
+    title:  (a, b) => a.title.localeCompare(b.title),
+    artist: (a, b) => (a.artist ?? '').localeCompare(b.artist ?? ''),
+  }
+
+  let displayTracks = $derived(
+    tracks.filter(matchesFilter).sort(SORT_FNS[sortKey])
+  )
+
   let unlisten
 
   onMount(async () => {
@@ -61,16 +90,18 @@
   }
 
   let exportingId = $state(null)
+  let exportError = $state('')
 
   async function exportStems(track) {
     const dest = await openDialog({ directory: true, title: 'Export stems to…' })
     if (!dest) return
     exportingId = track.id
+    exportError = ''
     try {
       await invoke('export_stems', { trackId: track.id, destDir: dest })
       await refreshTracks()
     } catch (e) {
-      alert(`Export failed: ${e}`)
+      exportError = String(e)
     } finally {
       exportingId = null
     }
@@ -139,11 +170,27 @@
 </script>
 
 <div class="track-list">
+  {#if tracks.length > 0}
+    <div class="toolbar">
+      <input class="filter-input" placeholder="Search" bind:value={filterQuery} />
+      <select class="sort-select" bind:value={sortKey}>
+        <option value="newest">Newest</option>
+        <option value="oldest">Oldest</option>
+        <option value="title">Title</option>
+        <option value="artist">Artist</option>
+      </select>
+    </div>
+  {/if}
+
+  {#if exportError}
+    <p class="export-error">{exportError}</p>
+  {/if}
+
   {#if tracks.length === 0}
     <p class="empty">No tracks yet. Add a YouTube URL or open a local file.</p>
   {/if}
 
-  {#each tracks as track (track.id)}
+  {#each displayTracks as track (track.id)}
     <div class="track" class:ready={isReady(track)} class:error={hasError(track)}>
       <div class="track-info">
         {#if editingId === track.id}
@@ -179,14 +226,14 @@
       </div>
       <div class="track-actions">
         {#if isReady(track)}
-          <button class="export-btn" onclick={() => exportStems(track)} disabled={exportingId === track.id}>
-            {exportingId === track.id ? 'Exporting…' : '↓ Export stems'}
-          </button>
           {#if track.export_path}
             <button class="open-btn" onclick={() => invoke('open_folder', { path: track.export_path })} title={track.export_path}>
               Open folder
             </button>
           {/if}
+          <button class="export-btn" onclick={() => exportStems(track)} disabled={exportingId === track.id}>
+            {exportingId === track.id ? 'Exporting…' : '↓ Export stems'}
+          </button>
         {/if}
         <button class="delete-btn" onclick={() => deleteTrack(track)} title="Delete track">✕</button>
       </div>
@@ -199,6 +246,53 @@
     display: flex;
     flex-direction: column;
     gap: 2px;
+  }
+
+  .toolbar {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 6px;
+  }
+
+  .filter-input {
+    flex: 1;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    color: var(--fg);
+    padding: 6px 10px;
+    font-size: 13px;
+    outline: none;
+  }
+
+  .filter-input:focus {
+    border-color: var(--accent);
+  }
+
+  .filter-input::placeholder {
+    color: var(--fg-muted);
+  }
+
+  .sort-select {
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    color: var(--fg);
+    padding: 6px 8px;
+    font-size: 13px;
+    outline: none;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+
+  .sort-select:focus {
+    border-color: var(--accent);
+  }
+
+  .export-error {
+    font-size: 12px;
+    color: var(--color-error);
+    margin: 0 0 6px;
   }
 
   .empty {
@@ -273,7 +367,7 @@
   }
 
   .status.ready {
-    color: #4caf72;
+    color: var(--color-ready);
   }
 
   .status.processing {

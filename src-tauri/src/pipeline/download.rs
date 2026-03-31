@@ -3,7 +3,7 @@ use std::process::Command;
 
 /// For a YouTube URL: download audio and convert to WAV at `dest`.
 pub fn from_youtube(url: &str, dest: &Path) -> Result<(), String> {
-    let status = Command::new("yt-dlp")
+    let output = Command::new("yt-dlp")
         .args([
             "-x",
             "--audio-format", "wav",
@@ -11,11 +11,12 @@ pub fn from_youtube(url: &str, dest: &Path) -> Result<(), String> {
             "-o", dest.to_str().ok_or("invalid dest path")?,
             url,
         ])
-        .status()
+        .output()
         .map_err(|e| format!("yt-dlp not found or failed to start: {e}"))?;
 
-    if !status.success() {
-        return Err(format!("yt-dlp exited with status {status}"));
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("yt-dlp failed: {stderr}"));
     }
     Ok(())
 }
@@ -29,7 +30,7 @@ pub fn from_local(src: &Path, dest: &Path) -> Result<(), String> {
         std::fs::copy(src, dest)
             .map_err(|e| format!("failed to copy WAV: {e}"))?;
     } else {
-        let status = Command::new("ffmpeg")
+        let output = Command::new("ffmpeg")
             .args([
                 "-y",
                 "-i", src.to_str().ok_or("invalid src path")?,
@@ -37,11 +38,12 @@ pub fn from_local(src: &Path, dest: &Path) -> Result<(), String> {
                 "-ac", "2",
                 dest.to_str().ok_or("invalid dest path")?,
             ])
-            .status()
+            .output()
             .map_err(|e| format!("ffmpeg not found or failed to start: {e}"))?;
 
-        if !status.success() {
-            return Err(format!("ffmpeg exited with status {status}"));
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(format!("ffmpeg failed: {stderr}"));
         }
     }
     Ok(())

@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "wavesplit",
+  "productName": "Wavesplit",
   "version": "0.1.0",
   "identifier": "com.wavesplit.app",
   "build": {
@@ -13,7 +13,7 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "wavesplit",
+        "title": "Wavesplit",
         "width": 800,
         "height": 600
       }
