@@ -2,14 +2,18 @@ mod commands;
 mod db;
 mod paths;
 mod pipeline;
+mod setup;
 
 use std::sync::{Arc, Mutex};
 use rusqlite::Connection;
-use tauri::Manager;
+use tauri::{AppHandle, Manager};
 
 pub struct AppState {
     pub db: Arc<Mutex<Connection>>,
     pub data_dir: std::path::PathBuf,
+    /// Directory that holds the frozen demucs binary and its model cache.
+    /// Default: {app_data}/demucs/
+    pub demucs_dir: std::path::PathBuf,
 }
 
 #[tauri::command]
@@ -30,6 +34,17 @@ fn delete_track(id: String, state: tauri::State<AppState>) -> Result<(), String>
     Ok(())
 }
 
+#[tauri::command]
+fn check_demucs(state: tauri::State<AppState>) -> bool {
+    setup::is_available(&state.demucs_dir)
+}
+
+#[tauri::command]
+async fn download_demucs(app: AppHandle, state: tauri::State<'_, AppState>) -> Result<(), String> {
+    let demucs_dir = state.demucs_dir.clone();
+    setup::download(&demucs_dir, &app).await
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -38,6 +53,9 @@ pub fn run() {
         .setup(|app| {
             let data_dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(data_dir.join("tracks"))?;
+
+            let demucs_dir = data_dir.join("demucs");
+            std::fs::create_dir_all(&demucs_dir)?;
 
             let db_path = data_dir.join("wavesplit.db");
             let conn = db::open(&db_path)?;
@@ -50,6 +68,7 @@ pub fn run() {
             app.manage(AppState {
                 db: Arc::new(Mutex::new(conn)),
                 data_dir,
+                demucs_dir,
             });
 
             Ok(())
@@ -57,6 +76,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             list_tracks,
             delete_track,
+            check_demucs,
+            download_demucs,
             commands::add_track_youtube,
             commands::add_track_local,
             commands::export_stems,
