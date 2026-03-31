@@ -16,24 +16,43 @@ pub struct Track {
     pub status_stems: String,
     pub status_analysis: String,
     pub error_message: Option<String>,
+    pub export_path: Option<String>,
+    pub artist: Option<String>,
 }
 
 pub fn open(db_path: &Path) -> Result<Connection> {
     let conn = Connection::open(db_path)?;
     conn.execute_batch(include_str!("../schema.sql"))?;
     conn.execute_batch("PRAGMA journal_mode=WAL;")?;
+    // Migrations — .ok() makes each idempotent (fails silently if column already exists)
+    conn.execute_batch("ALTER TABLE tracks ADD COLUMN export_path TEXT;").ok();
+    conn.execute_batch("ALTER TABLE tracks ADD COLUMN artist TEXT;").ok();
     Ok(conn)
 }
 
 pub fn insert_track(conn: &Connection, track: &Track) -> Result<()> {
     conn.execute(
-        "INSERT INTO tracks (id, title, source_type, source_url, source_path, created_at, sort_order, duration_ms, status_download, status_stems, status_analysis, error_message)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+        "INSERT INTO tracks (id, title, source_type, source_url, source_path, created_at, sort_order, duration_ms, status_download, status_stems, status_analysis, error_message, export_path, artist)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
         params![
             track.id, track.title, track.source_type, track.source_url, track.source_path,
             track.created_at, track.sort_order, track.duration_ms,
-            track.status_download, track.status_stems, track.status_analysis, track.error_message
+            track.status_download, track.status_stems, track.status_analysis, track.error_message,
+            track.export_path, track.artist
         ],
+    )?;
+    Ok(())
+}
+
+pub fn set_export_path(conn: &Connection, id: &str, path: &str) -> Result<()> {
+    conn.execute("UPDATE tracks SET export_path = ?1 WHERE id = ?2", params![path, id])?;
+    Ok(())
+}
+
+pub fn update_track_meta(conn: &Connection, id: &str, title: &str, artist: Option<&str>) -> Result<()> {
+    conn.execute(
+        "UPDATE tracks SET title = ?1, artist = ?2 WHERE id = ?3",
+        params![title, artist, id],
     )?;
     Ok(())
 }
@@ -41,7 +60,7 @@ pub fn insert_track(conn: &Connection, track: &Track) -> Result<()> {
 pub fn list_tracks(conn: &Connection) -> Result<Vec<Track>> {
     let mut stmt = conn.prepare(
         "SELECT id, title, source_type, source_url, source_path, created_at, sort_order, duration_ms,
-                status_download, status_stems, status_analysis, error_message
+                status_download, status_stems, status_analysis, error_message, export_path, artist
          FROM tracks ORDER BY sort_order ASC",
     )?;
     let tracks = stmt.query_map([], |row| {
@@ -58,6 +77,8 @@ pub fn list_tracks(conn: &Connection) -> Result<Vec<Track>> {
             status_stems: row.get(9)?,
             status_analysis: row.get(10)?,
             error_message: row.get(11)?,
+            export_path: row.get(12)?,
+            artist: row.get(13)?,
         })
     })?
     .collect::<Result<Vec<_>>>()?;
@@ -87,7 +108,7 @@ pub fn delete_track(conn: &Connection, id: &str) -> Result<()> {
 pub fn incomplete_tracks(conn: &Connection) -> Result<Vec<Track>> {
     let mut stmt = conn.prepare(
         "SELECT id, title, source_type, source_url, source_path, created_at, sort_order, duration_ms,
-                status_download, status_stems, status_analysis, error_message
+                status_download, status_stems, status_analysis, error_message, export_path, artist
          FROM tracks WHERE status_stems != 'done' OR status_analysis != 'done'
          ORDER BY sort_order ASC",
     )?;
@@ -105,6 +126,8 @@ pub fn incomplete_tracks(conn: &Connection) -> Result<Vec<Track>> {
             status_stems: row.get(9)?,
             status_analysis: row.get(10)?,
             error_message: row.get(11)?,
+            export_path: row.get(12)?,
+            artist: row.get(13)?,
         })
     })?
     .collect::<Result<Vec<_>>>()?;

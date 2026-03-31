@@ -60,6 +60,8 @@ pub fn run() {
             commands::add_track_youtube,
             commands::add_track_local,
             commands::export_stems,
+            commands::update_track_meta,
+            commands::open_folder,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

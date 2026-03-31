@@ -63,6 +63,8 @@ async fn add_track(
             status_stems: "pending".into(),
             status_analysis: "pending".into(),
             error_message: None,
+            export_path: None,
+            artist: None,
         }).map_err(|e| e.to_string())?;
     }
 
@@ -94,5 +96,42 @@ pub fn export_stems(track_id: String, dest_dir: String, state: tauri::State<'_, 
         return Err("No stem files found for this track".into());
     }
 
+    let conn = state.db.lock().unwrap();
+    db::set_export_path(&conn, &track_id, &dest_dir).map_err(|e| e.to_string())?;
+
     Ok(exported)
+}
+
+#[tauri::command]
+pub fn update_track_meta(
+    id: String,
+    title: String,
+    artist: Option<String>,
+    state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+    let conn = state.db.lock().unwrap();
+    db::update_track_meta(&conn, &id, &title, artist.as_deref()).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn open_folder(path: String) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    std::process::Command::new("open")
+        .arg(&path)
+        .spawn()
+        .map_err(|e| e.to_string())?;
+
+    #[cfg(target_os = "windows")]
+    std::process::Command::new("explorer")
+        .arg(&path)
+        .spawn()
+        .map_err(|e| e.to_string())?;
+
+    #[cfg(target_os = "linux")]
+    std::process::Command::new("xdg-open")
+        .arg(&path)
+        .spawn()
+        .map_err(|e| e.to_string())?;
+
+    Ok(())
 }

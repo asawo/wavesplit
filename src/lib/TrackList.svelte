@@ -1,7 +1,8 @@
 <script>
   import { invoke } from '@tauri-apps/api/core'
   import { listen } from '@tauri-apps/api/event'
-  import { open as openDialog } from '@tauri-apps/plugin-dialog'
+  import { open as openDialog, confirm } from '@tauri-apps/plugin-dialog'
+
   import { onMount, onDestroy } from 'svelte'
 
   let { tracks = $bindable([]), refresh = $bindable(null) } = $props()
@@ -33,6 +34,32 @@
     tracks = await invoke('list_tracks')
   }
 
+  // Inline editing: editingId = track id currently being edited
+  let editingId = $state(null)
+  let editTitle = $state('')
+  let editArtist = $state('')
+
+  function startEdit(track) {
+    editingId = track.id
+    editTitle = track.title
+    editArtist = track.artist ?? ''
+  }
+
+  async function commitEdit(track) {
+    if (editingId !== track.id) return
+    editingId = null
+    const trimmedTitle = editTitle.trim() || track.title
+    const trimmedArtist = editArtist.trim() || null
+    if (trimmedTitle === track.title && trimmedArtist === (track.artist ?? null)) return
+    await invoke('update_track_meta', { id: track.id, title: trimmedTitle, artist: trimmedArtist })
+    await refreshTracks()
+  }
+
+  function onEditKeydown(e, track) {
+    if (e.key === 'Enter') { e.target.blur() }
+    if (e.key === 'Escape') { editingId = null }
+  }
+
   let exportingId = $state(null)
 
   async function exportStems(track) {
@@ -40,19 +67,24 @@
     if (!dest) return
     exportingId = track.id
     try {
-      const files = await invoke('export_stems', { trackId: track.id, destDir: dest })
-      exportingId = null
-      alert(`Exported ${files.join(', ')} to ${dest}`)
+      await invoke('export_stems', { trackId: track.id, destDir: dest })
+      await refreshTracks()
     } catch (e) {
-      exportingId = null
       alert(`Export failed: ${e}`)
+    } finally {
+      exportingId = null
     }
   }
 
-  async function deleteTrack(id) {
-    await invoke('delete_track', { id })
-    tracks = tracks.filter((t) => t.id !== id)
-    const { [id]: _, ...rest } = progress
+  async function deleteTrack(track) {
+    const ok = await confirm(
+      `"${track.title}" and all its stems will be permanently deleted.`,
+      { title: 'Delete track?', kind: 'warning', okLabel: 'Delete', cancelLabel: 'Cancel' }
+    )
+    if (!ok) return
+    await invoke('delete_track', { id: track.id })
+    tracks = tracks.filter((t) => t.id !== track.id)
+    const { [track.id]: _, ...rest } = progress
     progress = rest
   }
 
@@ -114,8 +146,29 @@
   {#each tracks as track (track.id)}
     <div class="track" class:ready={isReady(track)} class:error={hasError(track)}>
       <div class="track-info">
-        <span class="title">{track.title}</span>
-        <span class="status" class:processing={isProcessing(track)}>
+        {#if editingId === track.id}
+          <input
+            class="edit-input title-input"
+            bind:value={editTitle}
+            onblur={() => commitEdit(track)}
+            onkeydown={(e) => onEditKeydown(e, track)}
+          />
+          <input
+            class="edit-input artist-input"
+            placeholder="Artist"
+            bind:value={editArtist}
+            onblur={() => commitEdit(track)}
+            onkeydown={(e) => onEditKeydown(e, track)}
+          />
+        {:else}
+          <span class="title" onclick={() => startEdit(track)} role="button" tabindex="0">
+            {track.title}
+          </span>
+          <span class="artist" onclick={() => startEdit(track)} role="button" tabindex="0">
+            {track.artist ?? '—'}
+          </span>
+        {/if}
+        <span class="status" class:processing={isProcessing(track)} class:ready={isReady(track)}>
           {statusLabel(track)}
         </span>
         {#if isProcessing(track)}
@@ -129,8 +182,13 @@
           <button class="export-btn" onclick={() => exportStems(track)} disabled={exportingId === track.id}>
             {exportingId === track.id ? 'Exporting…' : '↓ Export stems'}
           </button>
+          {#if track.export_path}
+            <button class="open-btn" onclick={() => invoke('open_folder', { path: track.export_path })} title={track.export_path}>
+              Open folder
+            </button>
+          {/if}
         {/if}
-        <button class="delete-btn" onclick={() => deleteTrack(track.id)} title="Delete track">✕</button>
+        <button class="delete-btn" onclick={() => deleteTrack(track)} title="Delete track">✕</button>
       </div>
     </div>
   {/each}
@@ -161,10 +219,6 @@
     gap: 12px;
   }
 
-  .track.ready {
-    background: var(--bg-track-ready);
-  }
-
   .track.error {
     background: var(--bg-track-error);
   }
@@ -182,11 +236,44 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    cursor: text;
+  }
+
+  .artist {
+    font-size: 12px;
+    color: var(--fg-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: text;
+  }
+
+  .edit-input {
+    background: var(--bg-input);
+    border: 1px solid var(--accent);
+    border-radius: 3px;
+    color: var(--fg);
+    padding: 1px 6px;
+    outline: none;
+    width: 100%;
+  }
+
+  .title-input {
+    font-size: 14px;
+    font-weight: 500;
+  }
+
+  .artist-input {
+    font-size: 12px;
   }
 
   .status {
     font-size: 11px;
     color: var(--fg-muted);
+  }
+
+  .status.ready {
+    color: #4caf72;
   }
 
   .status.processing {
@@ -236,6 +323,22 @@
   .export-btn:disabled {
     opacity: 0.5;
     cursor: default;
+  }
+
+  .open-btn {
+    padding: 4px 10px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: transparent;
+    color: var(--fg);
+    font-size: 12px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .open-btn:hover {
+    border-color: var(--fg-muted);
+    background: var(--bg-button-hover);
   }
 
   .delete-btn {

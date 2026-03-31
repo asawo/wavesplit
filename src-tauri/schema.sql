@@ -10,5 +10,7 @@ CREATE TABLE IF NOT EXISTS tracks (
     status_download  TEXT NOT NULL DEFAULT 'pending' CHECK (status_download  IN ('pending', 'done', 'error')),
     status_stems     TEXT NOT NULL DEFAULT 'pending' CHECK (status_stems     IN ('pending', 'done', 'error')),
     status_analysis  TEXT NOT NULL DEFAULT 'pending' CHECK (status_analysis  IN ('pending', 'done', 'error')),
-    error_message    TEXT
+    error_message    TEXT,
+    export_path      TEXT,
+    artist           TEXT
 );
