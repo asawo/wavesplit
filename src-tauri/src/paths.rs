@@ -16,6 +16,3 @@ pub fn source_wav(data_dir: &PathBuf, id: &str) -> PathBuf {
     track_dir(data_dir, id).join("source.wav")
 }
 
-pub fn temp_dir(id: &str) -> PathBuf {
-    std::env::temp_dir().join("wavesplit").join(id)
-}

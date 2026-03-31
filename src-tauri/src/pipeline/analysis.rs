@@ -1,3 +1,5 @@
+#![allow(dead_code)] // stubbed — will be used in MVP v2 (beat/note analysis)
+
 use std::path::Path;
 use std::process::Command;
 
