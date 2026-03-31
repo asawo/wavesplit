@@ -1,8 +1,9 @@
 name: Release
 
 on:
-  release:
-    types: [published]
+  push:
+    tags:
+      - 'v[0-9]*'
 
 jobs:
   release:
@@ -117,9 +118,9 @@ jobs:
           # APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           # APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
-          tagName: ${{ github.event.release.tag_name }}
-          releaseName: ${{ github.event.release.name }}
-          releaseBody: ${{ github.event.release.body }}
-          releaseDraft: false
-          prerelease: ${{ github.event.release.prerelease }}
+          tagName: ${{ github.ref_name }}
+          releaseName: Wavesplit ${{ github.ref_name }}
+          releaseBody: ''
+          releaseDraft: true
+          prerelease: false
           args: --target ${{ matrix.target }}

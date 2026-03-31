@@ -66,42 +66,49 @@ reset-data:
     rm -rf "$HOME/Library/Application Support/com.wavesplit.app"
 
 # Release a new version. Usage: just release 0.2.0
-# Bumps versions in Cargo.toml, tauri.conf.json, and package.json,
-# commits, pushes, and publishes a GitHub release (which triggers the build workflow).
+# Bumps versions, commits, tags, and pushes. CI builds artifacts and creates a draft release.
 release version:
     #!/usr/bin/env bash
     set -euo pipefail
 
-    # Validate semver format
     if ! echo "{{ version }}" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
         echo "ERROR: version must be semver (e.g. 0.2.0)"
         exit 1
     fi
 
-    # Ensure working tree is clean
     if ! git diff --quiet || ! git diff --cached --quiet; then
         echo "ERROR: working tree has uncommitted changes"
         exit 1
     fi
 
+    if git rev-parse "v{{ version }}" >/dev/null 2>&1; then
+        echo "ERROR: tag v{{ version }} already exists"
+        exit 1
+    fi
+
     echo "Bumping to {{ version }}..."
 
-    # Cargo.toml (deps use inline { version = "..." } so this only matches [package])
+    # Cargo.toml — safe: all deps use inline { version = "..." } syntax
     sed -i '' 's/^version = "[^"]*"/version = "{{ version }}"/' src-tauri/Cargo.toml
 
-    # tauri.conf.json
-    sed -i '' 's/"version": "[^"]*"/"version": "{{ version }}"/' src-tauri/tauri.conf.json
+    # JSON files — node for reliable parsing
+    node -e "
+      const fs = require('fs');
+      for (const f of ['src-tauri/tauri.conf.json', 'package.json']) {
+        const p = JSON.parse(fs.readFileSync(f, 'utf8'));
+        p.version = '{{ version }}';
+        fs.writeFileSync(f, JSON.stringify(p, null, 2) + '\n');
+      }
+    "
 
-    # package.json
-    sed -i '' 's/"version": "[^"]*"/"version": "{{ version }}"/' package.json
-
-    # Update Cargo.lock
+    # Sync Cargo.lock
     source "$HOME/.cargo/env" && cargo update --manifest-path src-tauri/Cargo.toml --package wavesplit
 
     git add src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/tauri.conf.json package.json
     git commit -m "chore: release v{{ version }}"
-    git push origin main
+    git tag -a "v{{ version }}" -m "v{{ version }}"
+    git push origin main --follow-tags
 
-    gh release create "v{{ version }}" \
-        --title "Wavesplit v{{ version }}" \
-        --generate-notes
+    echo ""
+    echo "CI is building artifacts and will create a draft release."
+    echo "Publish at: https://github.com/arthurlechte/wavesplit/releases"
