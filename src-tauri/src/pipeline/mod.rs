@@ -1,4 +1,5 @@
 mod analysis;
+pub mod bins;
 pub mod download;
 mod stems;
 

@@ -1,9 +1,11 @@
 use std::path::Path;
 use std::process::Command;
 
+use super::bins;
+
 /// For a YouTube URL: download audio and convert to WAV at `dest`.
 pub fn from_youtube(url: &str, dest: &Path) -> Result<(), String> {
-    let output = Command::new("yt-dlp")
+    let output = Command::new(bins::resolve("yt-dlp"))
         .args([
             "-x",
             "--audio-format", "wav",
@@ -30,7 +32,7 @@ pub fn from_local(src: &Path, dest: &Path) -> Result<(), String> {
         std::fs::copy(src, dest)
             .map_err(|e| format!("failed to copy WAV: {e}"))?;
     } else {
-        let output = Command::new("ffmpeg")
+        let output = Command::new(bins::resolve("ffmpeg"))
             .args([
                 "-y",
                 "-i", src.to_str().ok_or("invalid src path")?,
@@ -51,7 +53,7 @@ pub fn from_local(src: &Path, dest: &Path) -> Result<(), String> {
 
 /// Extract a title from a YouTube URL using yt-dlp (best-effort).
 pub fn youtube_title(url: &str) -> Option<String> {
-    let output = Command::new("yt-dlp")
+    let output = Command::new(bins::resolve("yt-dlp"))
         .args(["--print", "title", "--no-download", url])
         .output()
         .ok()?;
