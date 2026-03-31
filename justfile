@@ -64,3 +64,44 @@ open-data:
 # Wipe app data (destructive — deletes DB and all tracks)
 reset-data:
     rm -rf "$HOME/Library/Application Support/com.wavesplit.app"
+
+# Release a new version. Usage: just release 0.2.0
+# Bumps versions in Cargo.toml, tauri.conf.json, and package.json,
+# commits, pushes, and publishes a GitHub release (which triggers the build workflow).
+release version:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    # Validate semver format
+    if ! echo "{{ version }}" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+        echo "ERROR: version must be semver (e.g. 0.2.0)"
+        exit 1
+    fi
+
+    # Ensure working tree is clean
+    if ! git diff --quiet || ! git diff --cached --quiet; then
+        echo "ERROR: working tree has uncommitted changes"
+        exit 1
+    fi
+
+    echo "Bumping to {{ version }}..."
+
+    # Cargo.toml — first occurrence only (the [package] version, not deps)
+    sed -i '' "0,/^version = \".*\"/{s/^version = \".*\"/version = \"{{ version }}\"/}" src-tauri/Cargo.toml
+
+    # tauri.conf.json
+    sed -i '' "s/\"version\": \".*\"/\"version\": \"{{ version }}\"/" src-tauri/tauri.conf.json
+
+    # package.json
+    sed -i '' "s/\"version\": \".*\"/\"version\": \"{{ version }}\"/" package.json
+
+    # Update Cargo.lock
+    source "$HOME/.cargo/env" && cargo update --manifest-path src-tauri/Cargo.toml --package wavesplit
+
+    git add src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/tauri.conf.json package.json
+    git commit -m "chore: release v{{ version }}"
+    git push origin main
+
+    gh release create "v{{ version }}" \
+        --title "Wavesplit v{{ version }}" \
+        --generate-notes
