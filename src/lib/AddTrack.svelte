@@ -1,0 +1,121 @@
+<script>
+  import { invoke } from '@tauri-apps/api/core'
+  import { open as openDialog } from '@tauri-apps/plugin-dialog'
+
+  let { onAdded } = $props()
+
+  let url = $state('')
+  let loading = $state(false)
+  let error = $state('')
+
+  async function addYoutube() {
+    if (!url.trim()) return
+    loading = true
+    error = ''
+    try {
+      const id = await invoke('add_track_youtube', { url: url.trim() })
+      url = ''
+      onAdded(id)
+    } catch (e) {
+      error = String(e)
+    } finally {
+      loading = false
+    }
+  }
+
+  async function addLocal() {
+    const selected = await openDialog({
+      multiple: false,
+      filters: [{ name: 'Audio', extensions: ['mp3', 'wav', 'flac', 'm4a', 'aac', 'ogg'] }],
+    })
+    if (!selected) return
+    loading = true
+    error = ''
+    try {
+      const id = await invoke('add_track_local', { path: selected })
+      onAdded(id)
+    } catch (e) {
+      error = String(e)
+    } finally {
+      loading = false
+    }
+  }
+</script>
+
+<div class="add-track">
+  <div class="row">
+    <input
+      type="text"
+      placeholder="YouTube URL"
+      bind:value={url}
+      disabled={loading}
+      onkeydown={(e) => e.key === 'Enter' && addYoutube()}
+    />
+    <button onclick={addYoutube} disabled={loading || !url.trim()}>Add</button>
+    <span class="divider">or</span>
+    <button onclick={addLocal} disabled={loading}>Open file…</button>
+  </div>
+  {#if error}
+    <p class="error">{error}</p>
+  {/if}
+</div>
+
+<style>
+  .add-track {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  input {
+    flex: 1;
+    padding: 6px 10px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--bg-input);
+    color: var(--fg);
+    font-size: 13px;
+  }
+
+  input:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+
+  button {
+    padding: 6px 14px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--bg-button);
+    color: var(--fg);
+    font-size: 13px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  button:hover:not(:disabled) {
+    background: var(--bg-button-hover);
+  }
+
+  button:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+
+  .divider {
+    font-size: 12px;
+    color: var(--fg-muted);
+  }
+
+  .error {
+    font-size: 12px;
+    color: var(--color-error);
+    margin: 0;
+  }
+</style>

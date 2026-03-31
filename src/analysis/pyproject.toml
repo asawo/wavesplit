@@ -1,0 +1,19 @@
+[project]
+name = "wavesplit-analysis"
+version = "0.1.0"
+description = "Audio analysis scripts for wavesplit"
+authors = [
+    {name = "no"}
+]
+requires-python = "^3.11"
+dependencies = [
+    "librosa (>=0.11.0,<0.12.0)",
+    "numpy (>=2.4.4,<3.0.0)",
+    "demucs (>=4.0.1,<5.0.0)",
+    "torchaudio (==2.7.0)"
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
