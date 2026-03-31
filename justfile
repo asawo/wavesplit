@@ -86,14 +86,14 @@ release version:
 
     echo "Bumping to {{ version }}..."
 
-    # Cargo.toml — first occurrence only (the [package] version, not deps)
-    sed -i '' "0,/^version = \".*\"/{s/^version = \".*\"/version = \"{{ version }}\"/}" src-tauri/Cargo.toml
+    # Cargo.toml (deps use inline { version = "..." } so this only matches [package])
+    sed -i '' 's/^version = "[^"]*"/version = "{{ version }}"/' src-tauri/Cargo.toml
 
     # tauri.conf.json
-    sed -i '' "s/\"version\": \".*\"/\"version\": \"{{ version }}\"/" src-tauri/tauri.conf.json
+    sed -i '' 's/"version": "[^"]*"/"version": "{{ version }}"/' src-tauri/tauri.conf.json
 
     # package.json
-    sed -i '' "s/\"version\": \".*\"/\"version\": \"{{ version }}\"/" package.json
+    sed -i '' 's/"version": "[^"]*"/"version": "{{ version }}"/' package.json
 
     # Update Cargo.lock
     source "$HOME/.cargo/env" && cargo update --manifest-path src-tauri/Cargo.toml --package wavesplit
