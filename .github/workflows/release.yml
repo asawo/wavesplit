@@ -56,7 +56,8 @@ jobs:
             libwebkit2gtk-4.1-dev \
             libappindicator3-dev \
             librsvg2-dev \
-            patchelf
+            patchelf \
+            ffmpeg
 
       # ── Sidecar binaries ──────────────────────────────────────────────────────
       # Tauri bundles these next to the executable at install time.
