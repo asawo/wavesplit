@@ -8,13 +8,13 @@ const RELEASE_TAG: &str = "demucs-sidecar";
 
 fn asset_name() -> &'static str {
     #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
-    return "demucs-aarch64-apple-darwin";
+    return "demucs-macos-arm64";
     #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
-    return "demucs-x86_64-apple-darwin";
+    return "demucs-macos-x86_64";
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-    return "demucs-x86_64-unknown-linux-gnu";
+    return "demucs-linux-x86_64";
     #[cfg(all(target_os = "windows", target_arch = "x86_64"))]
-    return "demucs-x86_64-pc-windows-msvc.exe";
+    return "demucs-windows-x86_64.exe";
 }
 
 pub fn binary_path(demucs_dir: &Path) -> PathBuf {
