@@ -52,6 +52,7 @@ jobs:
           pyinstaller \
             --onefile \
             --collect-all demucs \
+            --collect-all certifi \
             --name ${{ matrix.asset }} \
             demucs_runner.py
 
