@@ -38,3 +38,8 @@ src-tauri/binaries/*
 __pycache__/
 *.pyc
 .venv/
+
+# PyInstaller build output
+src/analysis/dist/
+src/analysis/build/
+src/analysis/*.spec

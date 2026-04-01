@@ -10,7 +10,11 @@
   let ready = $state(true)  // optimistic: assume available, overlay shows if not
 
   onMount(async () => {
-    ready = await invoke('check_demucs')
+    try {
+      ready = await invoke('check_demucs')
+    } catch {
+      ready = false
+    }
   })
 
   function handleAdded(_id) {

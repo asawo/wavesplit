@@ -40,10 +40,10 @@ jobs:
       # Demucs runs fine on CPU — just slower than GPU.
       - name: Install CPU-only PyTorch
         run: |
-          pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
+          pip install torch==2.5.0 torchaudio==2.5.0 --index-url https://download.pytorch.org/whl/cpu
 
       - name: Install demucs + PyInstaller
-        run: pip install "numpy<2" demucs pyinstaller
+        run: pip install "numpy<2" demucs pyinstaller soundfile
 
       - name: Freeze with PyInstaller
         working-directory: src/analysis
@@ -53,6 +53,7 @@ jobs:
             --onefile \
             --collect-all demucs \
             --collect-all certifi \
+            --collect-all soundfile \
             --collect-binaries torch \
             --name ${{ matrix.asset }} \
             demucs_runner.py

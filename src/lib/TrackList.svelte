@@ -80,14 +80,22 @@
     const trimmedTitle = editTitle.trim() || track.title
     const trimmedArtist = editArtist.trim() || null
     if (trimmedTitle === track.title && trimmedArtist === (track.artist ?? null)) return
-    await invoke('update_track_meta', { id: track.id, title: trimmedTitle, artist: trimmedArtist })
-    await refreshTracks()
+    editError = ''
+    try {
+      await invoke('update_track_meta', { id: track.id, title: trimmedTitle, artist: trimmedArtist })
+      await refreshTracks()
+    } catch (e) {
+      editError = String(e)
+      await refreshTracks()
+    }
   }
 
   function onEditKeydown(e, track) {
     if (e.key === 'Enter') { e.target.blur() }
     if (e.key === 'Escape') { editingId = null }
   }
+
+  let editError = $state('')
 
   let exportingId = $state(null)
   let exportError = $state('')
@@ -107,16 +115,23 @@
     }
   }
 
+  let deleteError = $state('')
+
   async function deleteTrack(track) {
     const ok = await confirm(
       `"${track.title}" and all its stems will be permanently deleted.`,
       { title: 'Delete track?', kind: 'warning', okLabel: 'Delete', cancelLabel: 'Cancel' }
     )
     if (!ok) return
-    await invoke('delete_track', { id: track.id })
-    tracks = tracks.filter((t) => t.id !== track.id)
-    const { [track.id]: _, ...rest } = progress
-    progress = rest
+    deleteError = ''
+    try {
+      await invoke('delete_track', { id: track.id })
+      tracks = tracks.filter((t) => t.id !== track.id)
+      const { [track.id]: _, ...rest } = progress
+      progress = rest
+    } catch (e) {
+      deleteError = String(e)
+    }
   }
 
   function statusLabel(track) {
@@ -154,6 +169,14 @@
     return track.status_download === 'error' || track.status_stems === 'error' || track.status_analysis === 'error'
   }
 
+  async function openFolder(path) {
+    try {
+      await invoke('open_folder', { path })
+    } catch (e) {
+      deleteError = String(e)
+    }
+  }
+
   function isProcessing(track) {
     return !isReady(track) && !hasError(track)
   }
@@ -180,6 +203,14 @@
         <option value="artist">Artist</option>
       </select>
     </div>
+  {/if}
+
+  {#if editError}
+    <p class="export-error">{editError}</p>
+  {/if}
+
+  {#if deleteError}
+    <p class="export-error">{deleteError}</p>
   {/if}
 
   {#if exportError}
@@ -227,7 +258,7 @@
       <div class="track-actions">
         {#if isReady(track)}
           {#if track.export_path}
-            <button class="open-btn" onclick={() => invoke('open_folder', { path: track.export_path })} title={track.export_path}>
+            <button class="open-btn" onclick={() => openFolder(track.export_path)} title={track.export_path}>
               Open folder
             </button>
           {/if}

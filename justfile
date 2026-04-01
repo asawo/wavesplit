@@ -69,6 +69,39 @@ reset-data:
 reset-demucs:
     rm -f "$HOME/Library/Application Support/com.wavesplit.app/demucs/demucs"
 
+# Build and test the demucs sidecar locally. Usage: just test-demucs /path/to/audio.wav
+test-demucs audio:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    VENV=/tmp/demucs-build-venv
+
+    if [ ! -d "$VENV" ]; then
+        echo "Creating venv..."
+        python3.11 -m venv "$VENV"
+        "$VENV/bin/pip" install torch==2.5.0 torchaudio==2.5.0 --index-url https://download.pytorch.org/whl/cpu
+        "$VENV/bin/pip" install "numpy<2" demucs pyinstaller certifi soundfile
+    fi
+
+    echo "Building demucs binary..."
+    cd src/analysis
+    "$VENV/bin/pyinstaller" \
+        --onefile \
+        --collect-all demucs \
+        --collect-all certifi \
+        --collect-all soundfile \
+        --collect-binaries torch \
+        --name demucs-local-test \
+        demucs_runner.py
+
+    echo "Running separation on {{ audio }}..."
+    TORCH_HOME="$HOME/Library/Application Support/com.wavesplit.app/demucs/cache" \
+        dist/demucs-local-test --name htdemucs -o /tmp/demucs-test-out "{{ audio }}"
+
+    echo ""
+    echo "Output stems:"
+    ls /tmp/demucs-test-out/htdemucs/*/
+
 # Release a new version. Usage: just release 0.2.0
 # Bumps versions, commits, tags, and pushes. CI builds artifacts and creates a draft release.
 release version:
