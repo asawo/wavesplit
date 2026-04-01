@@ -25,11 +25,11 @@ Download the latest `.dmg` from the [Releases](https://github.com/asawo/wavespli
 
 ### "Wavesplit is damaged and can't be opened"
 
-macOS blocks apps that aren't signed with an Apple notarization certificate. This is expected — Wavesplit is safe.
+macOS blocks apps that aren't signed with an Apple notarization certificate. I also don't want to pay Apple $99/year for this privilege. 
 
-**Easiest fix:** Right-click (or Control-click) Wavesplit in your Applications folder and select **Open**. macOS will ask you to confirm — click **Open** and it will launch normally from then on.
+This is message is expected, and Wavesplit is safe. 
 
-If that doesn't work, open Terminal and run:
+To get past this, Ooen Terminal and run:
 
 ```sh
 sudo xattr -cr /Applications/Wavesplit.app
