@@ -16,7 +16,7 @@ setup-bins:
     TARGET=$(rustc -vV | grep 'host:' | awk '{print $2}')
     BIN_DIR=src-tauri/binaries
     mkdir -p "$BIN_DIR"
-    for tool in yt-dlp ffmpeg; do
+    for tool in yt-dlp ffmpeg ffprobe; do
         dest="$BIN_DIR/${tool}-${TARGET}"
         if [ ! -f "$dest" ]; then
             src=$(which "$tool" 2>/dev/null || true)

@@ -27,7 +27,8 @@
     "targets": "all",
     "externalBin": [
       "binaries/yt-dlp",
-      "binaries/ffmpeg"
+      "binaries/ffmpeg",
+      "binaries/ffprobe"
     ],
     "icon": [
       "icons/32x32.png",

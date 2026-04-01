@@ -6,9 +6,10 @@ use super::bins;
 /// For a YouTube URL: download audio and convert to WAV at `dest`.
 pub fn from_youtube(url: &str, dest: &Path) -> Result<(), String> {
     let ffmpeg = bins::resolve("ffmpeg");
+    let ffmpeg_dir = ffmpeg.parent().map(|p| p.to_path_buf()).unwrap_or(ffmpeg.clone());
     let output = Command::new(bins::resolve("yt-dlp"))
         .args([
-            "--ffmpeg-location", ffmpeg.to_str().ok_or("invalid ffmpeg path")?,
+            "--ffmpeg-location", ffmpeg_dir.to_str().ok_or("invalid ffmpeg path")?,
             "-x",
             "--audio-format", "wav",
             "--audio-quality", "0",
@@ -56,8 +57,9 @@ pub fn from_local(src: &Path, dest: &Path) -> Result<(), String> {
 /// Extract a title from a YouTube URL using yt-dlp (best-effort).
 pub fn youtube_title(url: &str) -> Option<String> {
     let ffmpeg = bins::resolve("ffmpeg");
+    let ffmpeg_dir = ffmpeg.parent().map(|p| p.to_path_buf()).unwrap_or(ffmpeg.clone());
     let output = Command::new(bins::resolve("yt-dlp"))
-        .args(["--ffmpeg-location", ffmpeg.to_str()?, "--print", "title", "--no-download", url])
+        .args(["--ffmpeg-location", ffmpeg_dir.to_str()?, "--print", "title", "--no-download", url])
         .output()
         .ok()?;
     if output.status.success() {

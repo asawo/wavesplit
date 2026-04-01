@@ -94,9 +94,10 @@ jobs:
           curl -fsSL https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos \
             -o src-tauri/binaries/yt-dlp-${{ matrix.target }}
           chmod +x src-tauri/binaries/yt-dlp-${{ matrix.target }}
-          # ffmpeg
+          # ffmpeg + ffprobe
           brew install ffmpeg
           cp "$(which ffmpeg)" src-tauri/binaries/ffmpeg-${{ matrix.target }}
+          cp "$(which ffprobe)" src-tauri/binaries/ffprobe-${{ matrix.target }}
 
       - name: Download sidecar binaries (Linux)
         if: matrix.os == 'ubuntu-22.04'
@@ -106,8 +107,9 @@ jobs:
           curl -fsSL https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp \
             -o src-tauri/binaries/yt-dlp-${{ matrix.target }}
           chmod +x src-tauri/binaries/yt-dlp-${{ matrix.target }}
-          # ffmpeg (already installed via system dependencies above)
+          # ffmpeg + ffprobe (already installed via system dependencies above)
           cp "$(which ffmpeg)" src-tauri/binaries/ffmpeg-${{ matrix.target }}
+          cp "$(which ffprobe)" src-tauri/binaries/ffprobe-${{ matrix.target }}
 
       - name: Download sidecar binaries (Windows)
         if: matrix.os == 'windows-latest'
@@ -123,6 +125,8 @@ jobs:
           Expand-Archive ffmpeg.zip -DestinationPath ffmpeg_tmp
           $ffmpegExe = Get-ChildItem -Path ffmpeg_tmp -Filter ffmpeg.exe -Recurse | Select-Object -First 1
           Copy-Item $ffmpegExe.FullName "src-tauri/binaries/ffmpeg-${{ matrix.target }}.exe"
+          $ffprobeExe = Get-ChildItem -Path ffmpeg_tmp -Filter ffprobe.exe -Recurse | Select-Object -First 1
+          Copy-Item $ffprobeExe.FullName "src-tauri/binaries/ffprobe-${{ matrix.target }}.exe"
           Remove-Item ffmpeg.zip, ffmpeg_tmp -Recurse -Force
 
       # ─────────────────────────────────────────────────────────────────────────
