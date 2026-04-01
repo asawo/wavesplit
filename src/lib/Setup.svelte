@@ -66,8 +66,7 @@
     {/if}
 
     <p class="note">
-      The download is around 110–235 MB depending on your platform. Make sure you're on Wi-Fi.
-      The first time you split a track, an additional ~80 MB will be fetched automatically.
+      Make sure you're on Wi-Fi. The first time you split a track, an additional ~80 MB will be fetched automatically.
     </p>
 </div>
 
