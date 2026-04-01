@@ -86,23 +86,22 @@ jobs:
 
       # ── Sidecar binaries ──────────────────────────────────────────────────────
 
-      - name: Setup ffmpeg (macOS)
-        if: matrix.os == 'macos-latest'
-        uses: FedericoCarboni/setup-ffmpeg@v3
-        with:
-          ffmpeg-version: release
-
       - name: Download sidecar binaries (macOS)
         if: matrix.os == 'macos-latest'
         run: |
           mkdir -p src-tauri/binaries
-          # yt-dlp (universal macOS binary works for both arm64 and x86_64)
+          # yt-dlp — universal binary, runs natively on both arm64 and x86_64
           curl -fsSL https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos \
             -o src-tauri/binaries/yt-dlp-${{ matrix.target }}
           chmod +x src-tauri/binaries/yt-dlp-${{ matrix.target }}
-          # ffmpeg + ffprobe — static builds provided by setup-ffmpeg action
-          cp "$(which ffmpeg)" src-tauri/binaries/ffmpeg-${{ matrix.target }}
-          cp "$(which ffprobe)" src-tauri/binaries/ffprobe-${{ matrix.target }}
+          # ffmpeg + ffprobe — evermeet.cx x86_64 static builds.
+          # No public static arm64 build exists; x86_64 runs via Rosetta 2 on Apple Silicon.
+          curl -fsSL "https://evermeet.cx/ffmpeg/getrelease/ffmpeg/zip" -o ffmpeg.zip
+          curl -fsSL "https://evermeet.cx/ffmpeg/getrelease/ffprobe/zip" -o ffprobe.zip
+          unzip -o ffmpeg.zip ffmpeg -d .
+          unzip -o ffprobe.zip ffprobe -d .
+          cp ffmpeg src-tauri/binaries/ffmpeg-${{ matrix.target }}
+          cp ffprobe src-tauri/binaries/ffprobe-${{ matrix.target }}
 
       - name: Download sidecar binaries (Linux)
         if: matrix.os == 'ubuntu-22.04'
