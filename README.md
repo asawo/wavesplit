@@ -25,15 +25,17 @@ Download the latest `.dmg` from the [Releases](https://github.com/asawo/wavespli
 
 ### "Wavesplit is damaged and can't be opened"
 
-macOS marks apps downloaded from the internet as quarantined, and since Wavesplit isn't distributed through the App Store or signed with an Apple notarization certificate, Gatekeeper blocks it with this message — even though the app is safe.
+macOS blocks apps that aren't signed with an Apple notarization certificate. This is expected — Wavesplit is safe.
 
-To fix it, open Terminal and run:
+**Easiest fix:** Right-click (or Control-click) Wavesplit in your Applications folder and select **Open**. macOS will ask you to confirm — click **Open** and it will launch normally from then on.
+
+If that doesn't work, open Terminal and run:
 
 ```sh
-xattr -cr /Applications/Wavesplit.app
+sudo xattr -cr /Applications/Wavesplit.app
 ```
 
-This removes the quarantine flag. You only need to do this once.
+You only need to do this once.
 
 ---
 
