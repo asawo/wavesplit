@@ -4994,7 +4994,7 @@ dependencies = [
 
 [[package]]
 name = "wavesplit"
-version = "0.20.0"
+version = "0.1.21"
 dependencies = [
  "chrono",
  "futures-util",
