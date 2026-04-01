@@ -21,7 +21,7 @@ pub fn from_youtube(url: &str, dest: &Path) -> Result<(), String> {
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("yt-dlp failed: {stderr}"));
+        return Err(format!("yt-dlp failed (ffmpeg-location={:?}): {stderr}", ffmpeg_dir));
     }
     Ok(())
 }

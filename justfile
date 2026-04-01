@@ -8,8 +8,8 @@ default:
 install:
     pnpm install
 
-# Copy system yt-dlp and ffmpeg into src-tauri/binaries/ for local dev.
-# Tauri requires externalBin files to exist at build time even in dev mode.
+# Copy system yt-dlp, ffmpeg, ffprobe into src-tauri/binaries/ for local dev.
+# Uses dynamically-linked system binaries — fine for dev since you have them installed.
 setup-bins:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -28,6 +28,63 @@ setup-bins:
             echo "copied $src → $dest"
         fi
     done
+
+# Download static (self-contained) ffmpeg + ffprobe for release builds.
+# Unlike setup-bins, these don't depend on Homebrew being installed on the user's machine.
+setup-bins-release:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    TARGET=$(rustc -vV | grep 'host:' | awk '{print $2}')
+    BIN_DIR=src-tauri/binaries
+    mkdir -p "$BIN_DIR"
+
+    # yt-dlp standalone binary
+    YTDLP_DEST="$BIN_DIR/yt-dlp-${TARGET}"
+    if [ ! -f "$YTDLP_DEST" ]; then
+        echo "Downloading yt-dlp..."
+        curl -fsSL https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos \
+            -o "$YTDLP_DEST"
+        chmod +x "$YTDLP_DEST"
+    fi
+
+    # ffmpeg + ffprobe: use ffbinaries static build for x86_64.
+    # No static arm64 build is available for macOS from any public source — CI uses
+    # the FedericoCarboni/setup-ffmpeg action which handles this. Local release builds
+    # on Apple Silicon will use the Homebrew binary (dynamically linked) which works
+    # on machines with Homebrew but not on clean installs. Use CI artifacts for distribution.
+    case "$TARGET" in
+        x86_64-apple-darwin)
+            FFBIN=$(curl -fsSL https://ffbinaries.com/api/v1/version/latest)
+            for tool in ffmpeg ffprobe; do
+                dest="$BIN_DIR/${tool}-${TARGET}"
+                if [ ! -f "$dest" ]; then
+                    echo "Downloading static $tool (osx-64)..."
+                    URL=$(echo "$FFBIN" | python3 -c "import sys,json; print(json.load(sys.stdin)['bin']['osx-64']['$tool'])")
+                    curl -fsSL "$URL" -o /tmp/${tool}.zip
+                    unzip -o /tmp/${tool}.zip "$tool" -d /tmp
+                    cp /tmp/$tool "$dest"
+                    chmod +x "$dest"
+                    rm /tmp/${tool}.zip /tmp/${tool}
+                fi
+            done
+            ;;
+        aarch64-apple-darwin)
+            echo "WARNING: no static arm64 ffmpeg available locally — using Homebrew (dynamic)."
+            echo "         Local builds will not work on machines without Homebrew. Use CI for distribution."
+            for tool in ffmpeg ffprobe; do
+                dest="$BIN_DIR/${tool}-${TARGET}"
+                if [ ! -f "$dest" ]; then
+                    src=$(which "$tool" 2>/dev/null || true)
+                    [ -z "$src" ] && echo "ERROR: $tool not found — brew install ffmpeg" && exit 1
+                    cp "$src" "$dest"
+                fi
+            done
+            ;;
+        *)
+            echo "ERROR: unsupported target $TARGET"
+            exit 1
+            ;;
+    esac
 
 # Start dev server (hot reload)
 dev: setup-bins

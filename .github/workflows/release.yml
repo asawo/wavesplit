@@ -86,6 +86,12 @@ jobs:
 
       # ── Sidecar binaries ──────────────────────────────────────────────────────
 
+      - name: Setup ffmpeg (macOS)
+        if: matrix.os == 'macos-latest'
+        uses: FedericoCarboni/setup-ffmpeg@v3
+        with:
+          ffmpeg-version: release
+
       - name: Download sidecar binaries (macOS)
         if: matrix.os == 'macos-latest'
         run: |
@@ -94,8 +100,7 @@ jobs:
           curl -fsSL https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos \
             -o src-tauri/binaries/yt-dlp-${{ matrix.target }}
           chmod +x src-tauri/binaries/yt-dlp-${{ matrix.target }}
-          # ffmpeg + ffprobe
-          brew install ffmpeg
+          # ffmpeg + ffprobe — static builds provided by setup-ffmpeg action
           cp "$(which ffmpeg)" src-tauri/binaries/ffmpeg-${{ matrix.target }}
           cp "$(which ffprobe)" src-tauri/binaries/ffprobe-${{ matrix.target }}
 
@@ -107,9 +112,16 @@ jobs:
           curl -fsSL https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp \
             -o src-tauri/binaries/yt-dlp-${{ matrix.target }}
           chmod +x src-tauri/binaries/yt-dlp-${{ matrix.target }}
-          # ffmpeg + ffprobe (already installed via system dependencies above)
-          cp "$(which ffmpeg)" src-tauri/binaries/ffmpeg-${{ matrix.target }}
-          cp "$(which ffprobe)" src-tauri/binaries/ffprobe-${{ matrix.target }}
+          # ffmpeg + ffprobe — static builds from ffbinaries.com
+          FFBIN=$(curl -fsSL https://ffbinaries.com/api/v1/version/latest)
+          FFMPEG_URL=$(echo "$FFBIN" | python3 -c "import sys,json; print(json.load(sys.stdin)['bin']['linux-64']['ffmpeg'])")
+          FFPROBE_URL=$(echo "$FFBIN" | python3 -c "import sys,json; print(json.load(sys.stdin)['bin']['linux-64']['ffprobe'])")
+          curl -fsSL "$FFMPEG_URL" -o ffmpeg.zip
+          curl -fsSL "$FFPROBE_URL" -o ffprobe.zip
+          unzip -o ffmpeg.zip ffmpeg -d .
+          unzip -o ffprobe.zip ffprobe -d .
+          cp ffmpeg src-tauri/binaries/ffmpeg-${{ matrix.target }}
+          cp ffprobe src-tauri/binaries/ffprobe-${{ matrix.target }}
 
       - name: Download sidecar binaries (Windows)
         if: matrix.os == 'windows-latest'
