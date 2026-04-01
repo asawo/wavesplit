@@ -31,12 +31,11 @@
   }
 </script>
 
-<div class="setup">
-  <div class="card">
+<div class="card">
     <h2>One-time setup</h2>
     <p class="description">
-      Wavesplit needs ML components to separate audio into stems.
-      This is a one-time download (~110–235 MB) and only happens once.
+      Before you can split your first track, Wavesplit needs to download the audio separation engine.
+      This only happens once. After that, everything works offline.
     </p>
 
     {#if error}
@@ -63,25 +62,16 @@
     {:else if downloading}
       <p class="progress-label">Connecting…</p>
     {:else}
-      <button onclick={startDownload}>Download ML components</button>
+      <button onclick={startDownload}>Download</button>
     {/if}
 
     <p class="note">
-      On first use, the stem separation model (~830 MB) will also be
-      downloaded automatically and cached for future runs.
+      The download is around 110–235 MB depending on your platform. Make sure you're on Wi-Fi.
+      The first time you split a track, an additional ~80 MB will be fetched automatically.
     </p>
-  </div>
 </div>
 
 <style>
-  .setup {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    height: 100vh;
-    padding: 20px;
-  }
-
   .card {
     background: var(--bg-panel);
     border: 1px solid var(--border);

@@ -19,6 +19,24 @@ Built with Tauri (Rust + Svelte).
 
 ---
 
+## Installation (macOS)
+
+Download the latest `.dmg` from the [Releases](https://github.com/asawo/wavesplit/releases) page, open it, and drag Wavesplit to your Applications folder.
+
+### "Wavesplit is damaged and can't be opened"
+
+macOS marks apps downloaded from the internet as quarantined, and since Wavesplit isn't distributed through the App Store or signed with an Apple notarization certificate, Gatekeeper blocks it with this message — even though the app is safe.
+
+To fix it, open Terminal and run:
+
+```sh
+xattr -cr /Applications/Wavesplit.app
+```
+
+This removes the quarantine flag. You only need to do this once.
+
+---
+
 ## Prerequisites
 
 Install these before running the app:

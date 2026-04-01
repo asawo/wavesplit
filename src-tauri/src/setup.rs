@@ -28,8 +28,24 @@ pub fn cache_dir(demucs_dir: &Path) -> PathBuf {
     demucs_dir.join("cache")
 }
 
+/// Returns the path to the demucs binary on PATH, if found.
+fn find_on_path() -> Option<PathBuf> {
+    which::which("demucs").ok()
+}
+
+/// True if demucs is available — either as a bundled binary or on PATH.
 pub fn is_available(demucs_dir: &Path) -> bool {
-    binary_path(demucs_dir).exists()
+    binary_path(demucs_dir).exists() || find_on_path().is_some()
+}
+
+/// Returns the binary to invoke: bundled binary if downloaded, otherwise the one on PATH.
+/// Returns None if demucs is not available at all.
+pub fn resolve_binary(demucs_dir: &Path) -> Option<PathBuf> {
+    let bundled = binary_path(demucs_dir);
+    if bundled.exists() {
+        return Some(bundled);
+    }
+    find_on_path()
 }
 
 #[derive(Clone, serde::Serialize)]

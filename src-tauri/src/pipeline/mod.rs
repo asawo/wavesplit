@@ -43,7 +43,10 @@ pub async fn run(
 ) {
     let source_wav = paths::source_wav(&data_dir, &track_id);
     let stems_dir = paths::stems_dir(&data_dir, &track_id);
-    let demucs_bin = setup::binary_path(&demucs_dir);
+    let Some(demucs_bin) = setup::resolve_binary(&demucs_dir) else {
+        emit(&app, &track_id, "stems", "error", Some("demucs not found".to_string()));
+        return;
+    };
     let cache_dir = setup::cache_dir(&demucs_dir);
 
     // --- Stage 1: download ---

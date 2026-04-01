@@ -7,12 +7,10 @@
 
   let tracks = $state([])
   let refreshTracks = $state(null)
-  let checked = $state(false)  // true once check_demucs has responded
-  let ready = $state(false)    // true if demucs is available
+  let ready = $state(true)  // optimistic: assume available, overlay shows if not
 
   onMount(async () => {
     ready = await invoke('check_demucs')
-    checked = true
   })
 
   function handleAdded(_id) {
@@ -20,29 +18,27 @@
   }
 </script>
 
-{#if !checked}
-  <!-- wait for check_demucs before rendering anything -->
-{:else if !ready}
-  <div class="fade-in">
+<div class="app fade-in">
+  <header>
+    <h1>Wavesplit</h1>
+  </header>
+
+  <main>
+    <section class="add-section">
+      <p class="section-label">Add track</p>
+      <AddTrack onAdded={handleAdded} />
+    </section>
+
+    <section class="list-section">
+      <p class="section-label">Library</p>
+      <TrackList bind:tracks bind:refresh={refreshTracks} />
+    </section>
+  </main>
+</div>
+
+{#if !ready}
+  <div class="overlay fade-in">
     <Setup onReady={() => ready = true} />
-  </div>
-{:else}
-  <div class="app fade-in">
-    <header>
-      <h1>Wavesplit</h1>
-    </header>
-
-    <main>
-      <section class="add-section">
-        <p class="section-label">Add track</p>
-        <AddTrack onAdded={handleAdded} />
-      </section>
-
-      <section class="list-section">
-        <p class="section-label">Library</p>
-        <TrackList bind:tracks bind:refresh={refreshTracks} />
-      </section>
-    </main>
   </div>
 {/if}
 
@@ -137,5 +133,16 @@
     flex: 1;
     overflow-y: auto;
     min-height: 0;
+  }
+
+  .overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.75);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    backdrop-filter: blur(4px);
   }
 </style>
