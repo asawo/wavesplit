@@ -65,6 +65,10 @@ open-data:
 reset-data:
     rm -rf "$HOME/Library/Application Support/com.wavesplit.app"
 
+# Delete the cached demucs binary so it re-downloads on next launch
+reset-demucs:
+    rm -f "$HOME/Library/Application Support/com.wavesplit.app/demucs/demucs"
+
 # Release a new version. Usage: just release 0.2.0
 # Bumps versions, commits, tags, and pushes. CI builds artifacts and creates a draft release.
 release version:

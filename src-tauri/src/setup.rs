@@ -120,5 +120,16 @@ pub async fn download(demucs_dir: &Path, app: &AppHandle) -> Result<(), String> 
         std::fs::set_permissions(&dest, perms).map_err(|e| e.to_string())?;
     }
 
+    // macOS marks files downloaded via HTTP with a quarantine attribute that
+    // Gatekeeper uses to block unsigned executables. Strip it so the binary
+    // can actually be invoked after download.
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("xattr")
+            .args(["-d", "com.apple.quarantine", dest.to_str().unwrap_or("")])
+            .output()
+            .ok();
+    }
+
     Ok(())
 }
