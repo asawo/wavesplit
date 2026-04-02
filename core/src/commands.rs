@@ -124,23 +124,10 @@ pub fn update_track_meta(
 
 #[tauri::command]
 pub fn open_folder(path: String) -> Result<(), String> {
-    #[cfg(target_os = "macos")]
-    std::process::Command::new("open")
-        .arg(&path)
-        .spawn()
-        .map_err(|e| e.to_string())?;
-
-    #[cfg(target_os = "windows")]
-    std::process::Command::new("explorer")
-        .arg(&path)
-        .spawn()
-        .map_err(|e| e.to_string())?;
-
-    #[cfg(target_os = "linux")]
-    std::process::Command::new("xdg-open")
-        .arg(&path)
-        .spawn()
-        .map_err(|e| e.to_string())?;
-
-    Ok(())
+    let p = std::path::Path::new(&path);
+    if !p.is_dir() {
+        return Err(format!("not a directory: {path}"));
+    }
+    let canonical = p.canonicalize().map_err(|e| e.to_string())?;
+    tauri_plugin_opener::open_path(canonical, None::<&str>).map_err(|e| e.to_string())
 }
