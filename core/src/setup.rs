@@ -9,7 +9,8 @@ const RELEASE_TAG: &str = "demucs-sidecar";
 
 /// SHA-256 digests for each platform binary.
 /// Update these each time build-demucs-sidecar.yml produces new binaries.
-/// The workflow now prints the hash for each asset after upload — copy it here.
+/// Fetch the current values:
+///   gh release download demucs-sidecar --pattern checksums.txt && cat checksums.txt
 fn expected_sha256() -> &'static str {
     #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
     return "0ddc40c14ce5d61a4d0ec8d6ba6af387665601133a36fe14c68086bffeefab31";

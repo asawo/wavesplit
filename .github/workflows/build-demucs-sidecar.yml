@@ -58,8 +58,16 @@ jobs:
             --name ${{ matrix.asset }} \
             demucs_runner.py
 
+      - name: Compute SHA-256
+        shell: bash
+        run: |
+          cd python/dist
+          sha256sum ${{ matrix.asset }}* 2>/dev/null || shasum -a 256 ${{ matrix.asset }}* | awk '{print $1, $2}' | sed 's|  *| |'
+          sha256sum ${{ matrix.asset }}* 2>/dev/null > ${{ matrix.asset }}.sha256 || \
+            shasum -a 256 ${{ matrix.asset }}* | awk '{print $1"  "$2}' > ${{ matrix.asset }}.sha256
+
       # Ensure the release exists, then upload (--clobber replaces existing assets).
-      - name: Upload to sidecar release
+      - name: Upload binary and checksum to sidecar release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
@@ -74,9 +82,35 @@ jobs:
             python/dist/${{ matrix.asset }}* \
             --clobber
 
-      - name: Print SHA-256 for setup.rs
-        shell: bash
+  collect-checksums:
+    needs: build
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - name: Download per-platform checksum files
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          sha256sum python/dist/${{ matrix.asset }}* 2>/dev/null || \
-            shasum -a 256 python/dist/${{ matrix.asset }}*
-          echo "Update the expected_sha256() entry for '${{ matrix.asset }}' in core/src/setup.rs with the hash above."
+          gh release download demucs-sidecar \
+            --repo ${{ github.repository }} \
+            --pattern '*.sha256' \
+            --dir checksums
+
+      - name: Merge into checksums.txt and upload
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cat checksums/*.sha256 | sort > checksums.txt
+          echo "checksums.txt:"
+          cat checksums.txt
+          gh release upload demucs-sidecar checksums.txt --clobber --repo ${{ github.repository }}
+
+      - name: Remove per-platform .sha256 assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          for f in checksums/*.sha256; do
+            name=$(basename "$f")
+            gh release delete-asset demucs-sidecar "$name" --yes --repo ${{ github.repository }}
+          done
