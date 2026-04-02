@@ -208,15 +208,15 @@
   {/if}
 
   {#if editError}
-    <p class="export-error">{editError}</p>
+    <p class="export-error">{editError} <button class="dismiss-error" onclick={() => editError = ''}>×</button></p>
   {/if}
 
   {#if deleteError}
-    <p class="export-error">{deleteError}</p>
+    <p class="export-error">{deleteError} <button class="dismiss-error" onclick={() => deleteError = ''}>×</button></p>
   {/if}
 
   {#if exportError}
-    <p class="export-error">{exportError}</p>
+    <p class="export-error">{exportError} <button class="dismiss-error" onclick={() => exportError = ''}>×</button></p>
   {/if}
 
   {#if tracks.length === 0}
@@ -335,6 +335,21 @@
     font-size: 12px;
     color: var(--color-error);
     margin: 0 0 6px;
+  }
+
+  .dismiss-error {
+    background: none;
+    border: none;
+    color: var(--color-error);
+    cursor: pointer;
+    font-size: 14px;
+    padding: 0 0 0 4px;
+    line-height: 1;
+    opacity: 0.7;
+  }
+
+  .dismiss-error:hover {
+    opacity: 1;
   }
 
   .empty {
