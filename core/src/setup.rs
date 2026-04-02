@@ -28,7 +28,9 @@ async fn fetch_expected_sha256(
         .await
         .map_err(|e| format!("failed to read checksums.txt: {e}"))?;
     for line in body.lines() {
-        // Standard shasum format: "{hash}  {filename}" (two spaces)
+        // Standard shasum format: "{hash}  {filename}" (two spaces between hash and name).
+        // split_once("  ") consumes both spaces, so `filename` has no leading space.
+        // trim() handles any trailing whitespace or CRLF that survives .lines().
         if let Some((hash, filename)) = line.split_once("  ") {
             if filename.trim() == asset {
                 return Ok(hash.trim().to_string());
