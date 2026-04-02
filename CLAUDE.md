@@ -39,17 +39,17 @@ Each stage updates the DB and emits a `pipeline` Tauri event `{ track_id, stage,
 
 | File | Purpose |
 |------|---------|
-| `src-tauri/src/lib.rs` | App entry point, AppState, command registration |
-| `src-tauri/src/db.rs` | SQLite schema, migrations, all CRUD |
-| `src-tauri/src/paths.rs` | Path helpers (track_dir, stems_dir, source_wav, etc.) |
-| `src-tauri/src/commands.rs` | Tauri commands: add_track_youtube/local, export_stems, update_track_meta, open_folder |
-| `src-tauri/src/pipeline/mod.rs` | Async pipeline orchestrator (download → stems → analysis) |
-| `src-tauri/src/pipeline/download.rs` | yt-dlp and ffmpeg subprocess wrappers |
-| `src-tauri/src/pipeline/stems.rs` | Demucs subprocess, flattens output into stems/ |
-| `src-tauri/src/pipeline/analysis.rs` | Analysis runner (currently unused; project_dir() is reused by stems.rs) |
-| `src/App.svelte` | Root layout, CSS variables, section structure |
-| `src/lib/AddTrack.svelte` | YouTube URL input + local file picker |
-| `src/lib/TrackList.svelte` | Library: filter, sort, inline edit, progress, export, delete |
+| `core/src/lib.rs` | App entry point, AppState, command registration |
+| `core/src/db.rs` | SQLite schema, migrations, all CRUD |
+| `core/src/paths.rs` | Path helpers (track_dir, stems_dir, source_wav, etc.) |
+| `core/src/commands.rs` | Tauri commands: add_track_youtube/local, export_stems, update_track_meta, open_folder |
+| `core/src/pipeline/mod.rs` | Async pipeline orchestrator (download → stems → analysis) |
+| `core/src/pipeline/download.rs` | yt-dlp and ffmpeg subprocess wrappers |
+| `core/src/pipeline/stems.rs` | Demucs subprocess, flattens output into stems/ |
+| `core/src/pipeline/analysis.rs` | Analysis runner (currently unused; project_dir() is reused by stems.rs) |
+| `ui/App.svelte` | Root layout, CSS variables, section structure |
+| `ui/lib/AddTrack.svelte` | YouTube URL input + local file picker |
+| `ui/lib/TrackList.svelte` | Library: filter, sort, inline edit, progress, export, delete |
 | `python/analyze.py` | Python analysis script (not called yet) |
 | `python/pyproject.toml` | Poetry project: librosa, numpy, demucs (torch 2.6.0) |
 

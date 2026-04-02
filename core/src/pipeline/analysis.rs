@@ -4,10 +4,10 @@ use std::path::Path;
 use std::process::Command;
 
 /// Resolve the Poetry project directory containing pyproject.toml and analyze.py.
-/// In dev: src-tauri/target/debug/wavesplit → ../../../python/
+/// In dev: core/target/debug/wavesplit → ../../../python/
 pub fn project_dir() -> std::path::PathBuf {
     let exe = std::env::current_exe().unwrap_or_default();
-    // dev path: src-tauri/target/debug/wavesplit → up 4 levels to repo root, then python/
+    // dev path: core/target/debug/wavesplit → up 4 levels to repo root, then python/
     let dev_path = exe
         .parent().unwrap_or(Path::new("."))
         .parent().unwrap_or(Path::new("."))

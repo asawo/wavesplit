@@ -8,13 +8,13 @@ default:
 install:
     pnpm install
 
-# Copy system yt-dlp, ffmpeg, ffprobe into src-tauri/binaries/ for local dev.
+# Copy system yt-dlp, ffmpeg, ffprobe into core/binaries/ for local dev.
 # Uses dynamically-linked system binaries — fine for dev since you have them installed.
 setup-bins:
     #!/usr/bin/env bash
     set -euo pipefail
     TARGET=$(rustc -vV | grep 'host:' | awk '{print $2}')
-    BIN_DIR=src-tauri/binaries
+    BIN_DIR=core/binaries
     mkdir -p "$BIN_DIR"
     for tool in yt-dlp ffmpeg ffprobe; do
         dest="$BIN_DIR/${tool}-${TARGET}"
@@ -35,7 +35,7 @@ setup-bins-release:
     #!/usr/bin/env bash
     set -euo pipefail
     TARGET=$(rustc -vV | grep 'host:' | awk '{print $2}')
-    BIN_DIR=src-tauri/binaries
+    BIN_DIR=core/binaries
     mkdir -p "$BIN_DIR"
 
     # yt-dlp standalone binary
@@ -96,23 +96,23 @@ build: setup-bins
 
 # Build Rust only (no frontend)
 build-rust:
-    source "$HOME/.cargo/env" && cargo build --manifest-path src-tauri/Cargo.toml
+    source "$HOME/.cargo/env" && cargo build --manifest-path core/Cargo.toml
 
 # Check Rust code without building
 check:
-    source "$HOME/.cargo/env" && cargo check --manifest-path src-tauri/Cargo.toml
+    source "$HOME/.cargo/env" && cargo check --manifest-path core/Cargo.toml
 
 # Run Rust tests
 test:
-    source "$HOME/.cargo/env" && cargo test --manifest-path src-tauri/Cargo.toml
+    source "$HOME/.cargo/env" && cargo test --manifest-path core/Cargo.toml
 
 # Format Rust code
 fmt:
-    source "$HOME/.cargo/env" && cargo fmt --manifest-path src-tauri/Cargo.toml
+    source "$HOME/.cargo/env" && cargo fmt --manifest-path core/Cargo.toml
 
 # Lint Rust code
 lint:
-    source "$HOME/.cargo/env" && cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
+    source "$HOME/.cargo/env" && cargo clippy --manifest-path core/Cargo.toml -- -D warnings
 
 # Run all CI checks locally (clippy + test)
 ci: lint test
@@ -186,12 +186,12 @@ release version:
     echo "Bumping to {{ version }}..."
 
     # Cargo.toml — safe: all deps use inline { version = "..." } syntax
-    sed -i '' 's/^version = "[^"]*"/version = "{{ version }}"/' src-tauri/Cargo.toml
+    sed -i '' 's/^version = "[^"]*"/version = "{{ version }}"/' core/Cargo.toml
 
     # JSON files — node for reliable parsing
     node -e "
       const fs = require('fs');
-      for (const f of ['src-tauri/tauri.conf.json', 'package.json']) {
+      for (const f of ['core/tauri.conf.json', 'package.json']) {
         const p = JSON.parse(fs.readFileSync(f, 'utf8'));
         p.version = '{{ version }}';
         fs.writeFileSync(f, JSON.stringify(p, null, 2) + '\n');
@@ -199,9 +199,9 @@ release version:
     "
 
     # Sync Cargo.lock
-    source "$HOME/.cargo/env" && cargo update --manifest-path src-tauri/Cargo.toml --package wavesplit
+    source "$HOME/.cargo/env" && cargo update --manifest-path core/Cargo.toml --package wavesplit
 
-    git add src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/tauri.conf.json package.json
+    git add core/Cargo.toml core/Cargo.lock core/tauri.conf.json package.json
     git commit -m "chore: release v{{ version }}"
     git tag -a "v{{ version }}" -m "v{{ version }}"
     git push origin main --follow-tags

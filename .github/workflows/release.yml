@@ -126,7 +126,7 @@ jobs:
       - name: Rust cache
         uses: swatinem/rust-cache@v2
         with:
-          workspaces: src-tauri
+          workspaces: core
 
       - name: Install Linux system dependencies
         if: matrix.os == 'ubuntu-22.04'
@@ -144,28 +144,28 @@ jobs:
       - name: Download sidecar binaries (macOS)
         if: matrix.os == 'macos-latest'
         run: |
-          mkdir -p src-tauri/binaries
+          mkdir -p core/binaries
           # yt-dlp — universal binary, runs natively on both arm64 and x86_64
           curl -fsSL "https://github.com/yt-dlp/yt-dlp/releases/download/${{ env.YT_DLP_VERSION }}/yt-dlp_macos" \
-            -o src-tauri/binaries/yt-dlp-${{ matrix.target }}
-          chmod +x src-tauri/binaries/yt-dlp-${{ matrix.target }}
+            -o core/binaries/yt-dlp-${{ matrix.target }}
+          chmod +x core/binaries/yt-dlp-${{ matrix.target }}
           # ffmpeg + ffprobe — evermeet.cx x86_64 static builds.
           # No public static arm64 build exists; x86_64 runs via Rosetta 2 on Apple Silicon.
           curl -fsSL "https://evermeet.cx/ffmpeg/ffmpeg-${{ env.FFMPEG_MACOS_VERSION }}.zip" -o ffmpeg.zip
           curl -fsSL "https://evermeet.cx/ffmpeg/ffprobe-${{ env.FFMPEG_MACOS_VERSION }}.zip" -o ffprobe.zip
           unzip -o ffmpeg.zip ffmpeg -d .
           unzip -o ffprobe.zip ffprobe -d .
-          cp ffmpeg src-tauri/binaries/ffmpeg-${{ matrix.target }}
-          cp ffprobe src-tauri/binaries/ffprobe-${{ matrix.target }}
+          cp ffmpeg core/binaries/ffmpeg-${{ matrix.target }}
+          cp ffprobe core/binaries/ffprobe-${{ matrix.target }}
 
       - name: Download sidecar binaries (Linux)
         if: matrix.os == 'ubuntu-22.04'
         run: |
-          mkdir -p src-tauri/binaries
+          mkdir -p core/binaries
           # yt-dlp
           curl -fsSL "https://github.com/yt-dlp/yt-dlp/releases/download/${{ env.YT_DLP_VERSION }}/yt-dlp" \
-            -o src-tauri/binaries/yt-dlp-${{ matrix.target }}
-          chmod +x src-tauri/binaries/yt-dlp-${{ matrix.target }}
+            -o core/binaries/yt-dlp-${{ matrix.target }}
+          chmod +x core/binaries/yt-dlp-${{ matrix.target }}
           # ffmpeg + ffprobe — static builds from ffbinaries.com (pinned version)
           FFBIN=$(curl -fsSL "https://ffbinaries.com/api/v1/version/${{ env.FFMPEG_LINUX_VERSION }}")
           FFMPEG_URL=$(echo "$FFBIN" | python3 -c "import sys,json; print(json.load(sys.stdin)['bin']['linux-64']['ffmpeg'])")
@@ -174,25 +174,25 @@ jobs:
           curl -fsSL "$FFPROBE_URL" -o ffprobe.zip
           unzip -o ffmpeg.zip ffmpeg -d .
           unzip -o ffprobe.zip ffprobe -d .
-          cp ffmpeg src-tauri/binaries/ffmpeg-${{ matrix.target }}
-          cp ffprobe src-tauri/binaries/ffprobe-${{ matrix.target }}
+          cp ffmpeg core/binaries/ffmpeg-${{ matrix.target }}
+          cp ffprobe core/binaries/ffprobe-${{ matrix.target }}
 
       - name: Download sidecar binaries (Windows)
         if: matrix.os == 'windows-latest'
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force -Path src-tauri/binaries | Out-Null
+          New-Item -ItemType Directory -Force -Path core/binaries | Out-Null
           # yt-dlp
           Invoke-WebRequest -Uri "https://github.com/yt-dlp/yt-dlp/releases/download/${{ env.YT_DLP_VERSION }}/yt-dlp.exe" `
-            -OutFile "src-tauri/binaries/yt-dlp-${{ matrix.target }}.exe"
+            -OutFile "core/binaries/yt-dlp-${{ matrix.target }}.exe"
             # ffmpeg — BtbN static build (pinned release tag)
           Invoke-WebRequest -Uri "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n${{ env.FFMPEG_WIN_VERSION }}-latest-win64-gpl-${{ env.FFMPEG_WIN_VERSION }}.zip" `
             -OutFile ffmpeg.zip
           Expand-Archive ffmpeg.zip -DestinationPath ffmpeg_tmp
           $ffmpegExe = Get-ChildItem -Path ffmpeg_tmp -Filter ffmpeg.exe -Recurse | Select-Object -First 1
-          Copy-Item $ffmpegExe.FullName "src-tauri/binaries/ffmpeg-${{ matrix.target }}.exe"
+          Copy-Item $ffmpegExe.FullName "core/binaries/ffmpeg-${{ matrix.target }}.exe"
           $ffprobeExe = Get-ChildItem -Path ffmpeg_tmp -Filter ffprobe.exe -Recurse | Select-Object -First 1
-          Copy-Item $ffprobeExe.FullName "src-tauri/binaries/ffprobe-${{ matrix.target }}.exe"
+          Copy-Item $ffprobeExe.FullName "core/binaries/ffprobe-${{ matrix.target }}.exe"
           Remove-Item ffmpeg.zip, ffmpeg_tmp -Recurse -Force
 
       # ─────────────────────────────────────────────────────────────────────────
@@ -227,24 +227,24 @@ jobs:
 
           case "$FRIENDLY" in
             macos-*)
-              src=$(ls src-tauri/target/$TARGET/release/bundle/dmg/*.dmg | head -1)
+              src=$(ls core/target/$TARGET/release/bundle/dmg/*.dmg | head -1)
               dest="Wavesplit-${VER}-${FRIENDLY}.dmg"
               cp "$src" "$dest"
               gh release upload "$TAG" "$dest" --repo "$REPO" --clobber
               ;;
             linux-*)
-              src=$(ls src-tauri/target/$TARGET/release/bundle/appimage/*.AppImage | head -1)
+              src=$(ls core/target/$TARGET/release/bundle/appimage/*.AppImage | head -1)
               dest="Wavesplit-${VER}-${FRIENDLY}.AppImage"
               cp "$src" "$dest"
               gh release upload "$TAG" "$dest" --repo "$REPO" --clobber
 
-              src=$(ls src-tauri/target/$TARGET/release/bundle/deb/*.deb | head -1)
+              src=$(ls core/target/$TARGET/release/bundle/deb/*.deb | head -1)
               dest="Wavesplit-${VER}-${FRIENDLY}.deb"
               cp "$src" "$dest"
               gh release upload "$TAG" "$dest" --repo "$REPO" --clobber
               ;;
             windows-*)
-              src=$(ls src-tauri/target/$TARGET/release/bundle/nsis/*.exe | head -1)
+              src=$(ls core/target/$TARGET/release/bundle/nsis/*.exe | head -1)
               dest="Wavesplit-${VER}-${FRIENDLY}.exe"
               cp "$src" "$dest"
               gh release upload "$TAG" "$dest" --repo "$REPO" --clobber
