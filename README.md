@@ -39,27 +39,22 @@ You only need to do this once.
 
 ---
 
-## Prerequisites
+## Development
 
-Install these before running the app:
+### Prerequisites
 
 - [Rust](https://rustup.rs/)
 - [Node.js](https://nodejs.org/) + [pnpm](https://pnpm.io/)
-- [yt-dlp](https://github.com/yt-dlp/yt-dlp) — for YouTube downloads (`brew install yt-dlp`)
-- [ffmpeg](https://ffmpeg.org/) — for audio conversion (`brew install ffmpeg`)
-- [Poetry](https://python-poetry.org/) — for the Python analysis environment (`brew install poetry`)
+- [yt-dlp](https://github.com/yt-dlp/yt-dlp) — for YouTube downloads
+- [ffmpeg](https://ffmpeg.org/) — for audio conversion
+- [Poetry](https://python-poetry.org/) — for the Python analysis environment
 - Python 3.11+ (via [asdf](https://asdf-vm.com/) or system install)
 
-Install Python dependencies:
-
 ```sh
+# Install Python dependencies
 cd src/analysis
 poetry install
 ```
-
----
-
-## Development
 
 ```sh
 # Install JS dependencies
