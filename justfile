@@ -144,7 +144,7 @@ test-demucs audio:
     fi
 
     echo "Building demucs binary..."
-    cd src/analysis
+    cd python
     "$VENV/bin/pyinstaller" \
         --onefile \
         --collect-all demucs \

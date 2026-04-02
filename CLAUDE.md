@@ -50,8 +50,8 @@ Each stage updates the DB and emits a `pipeline` Tauri event `{ track_id, stage,
 | `src/App.svelte` | Root layout, CSS variables, section structure |
 | `src/lib/AddTrack.svelte` | YouTube URL input + local file picker |
 | `src/lib/TrackList.svelte` | Library: filter, sort, inline edit, progress, export, delete |
-| `src/analysis/analyze.py` | Python analysis script (not called yet) |
-| `src/analysis/pyproject.toml` | Poetry project: librosa, numpy, demucs (torch 2.6.0) |
+| `python/analyze.py` | Python analysis script (not called yet) |
+| `python/pyproject.toml` | Poetry project: librosa, numpy, demucs (torch 2.6.0) |
 
 ## Data model (SQLite)
 
@@ -65,21 +65,21 @@ Migrations are additive via `.ok()` on `ALTER TABLE` in `db::open()`.
 
 - **Backend**: Rust (Tauri 2) — tokio async, rusqlite (bundled SQLite), uuid, chrono
 - **Frontend**: Svelte 5 (runes), Vite, pnpm
-- **External tools**: yt-dlp, ffmpeg (system install); demucs (via Poetry venv in `src/analysis/`)
+- **External tools**: yt-dlp, ffmpeg (system install); demucs (via Poetry venv in `python/`)
 - **Analysis**: Python 3.11+, Poetry, librosa, numpy, demucs
 
 ## Dev setup
 
 ```sh
 brew install yt-dlp ffmpeg poetry
-cd src/analysis && poetry install
+cd python && poetry install
 pnpm install
 just dev        # or: pnpm run tauri dev
 ```
 
 ## Important behaviours
 
-- `analysis::project_dir()` walks 4 parent levels up from the binary to find `src/analysis/` — works in dev, will need revisiting for production packaging
+- `analysis::project_dir()` walks 4 parent levels up from the binary to find `python/` — works in dev, will need revisiting for production packaging
 - Demucs is invoked via `poetry run demucs` with `current_dir` set to the analysis project
 - `list_tracks` returns newest-first (`ORDER BY sort_order DESC`)
 - On startup, `incomplete_tracks()` logs any tracks with unfinished pipeline state (not auto-retried)

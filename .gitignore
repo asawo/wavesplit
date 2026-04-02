@@ -40,6 +40,6 @@ __pycache__/
 .venv/
 
 # PyInstaller build output
-src/analysis/dist/
-src/analysis/build/
-src/analysis/*.spec
+python/dist/
+python/build/
+python/*.spec

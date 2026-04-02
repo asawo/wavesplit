@@ -52,7 +52,7 @@ You only need to do this once.
 
 ```sh
 # Install Python dependencies
-cd src/analysis
+cd python
 poetry install
 ```
 
