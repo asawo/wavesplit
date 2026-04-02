@@ -46,7 +46,7 @@ jobs:
         run: pip install "numpy<2" demucs pyinstaller soundfile
 
       - name: Freeze with PyInstaller
-        working-directory: src/analysis
+        working-directory: python
         shell: bash
         run: |
           pyinstaller \
@@ -71,5 +71,5 @@ jobs:
               --prerelease
 
           gh release upload demucs-sidecar \
-            src/analysis/dist/${{ matrix.asset }}* \
+            python/dist/${{ matrix.asset }}* \
             --clobber
