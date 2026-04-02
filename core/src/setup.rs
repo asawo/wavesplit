@@ -1,10 +1,25 @@
 use std::path::{Path, PathBuf};
 use futures_util::StreamExt;
+use sha2::{Digest, Sha256};
 use tauri::{AppHandle, Emitter};
 
 /// Update this to your GitHub repo (owner/name).
 const GITHUB_REPO: &str = "asawo/wavesplit";
 const RELEASE_TAG: &str = "demucs-sidecar";
+
+/// SHA-256 digests for each platform binary.
+/// Update these each time build-demucs-sidecar.yml produces new binaries.
+/// The workflow now prints the hash for each asset after upload — copy it here.
+fn expected_sha256() -> &'static str {
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    return "0ddc40c14ce5d61a4d0ec8d6ba6af387665601133a36fe14c68086bffeefab31";
+    #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
+    return "a921410c07faebb6dc4fb61f1ce519a1e9719defc2656eaa789ab68ac8e0c35d";
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+    return "c92dbbeab6e2f4c8d83cb0babfbfd18110e3c7a43bd2f1938bb618b138681c5b";
+    #[cfg(all(target_os = "windows", target_arch = "x86_64"))]
+    return "f5d8613d97c7168c3a5be2160ef2ce3117bbed264dba57ee218344e9d6e403f4";
+}
 
 fn asset_name() -> &'static str {
     #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
@@ -84,11 +99,13 @@ pub async fn download(demucs_dir: &Path, app: &AppHandle) -> Result<(), String> 
         .map_err(|e| format!("failed to create temp file: {e}"))?;
 
     let mut downloaded: u64 = 0;
+    let mut hasher = Sha256::new();
     let mut stream = response.bytes_stream();
 
     while let Some(chunk) = stream.next().await {
         let chunk = chunk.map_err(|e| format!("download error: {e}"))?;
         downloaded += chunk.len() as u64;
+        hasher.update(&chunk);
 
         use tokio::io::AsyncWriteExt;
         file.write_all(&chunk)
@@ -105,6 +122,16 @@ pub async fn download(demucs_dir: &Path, app: &AppHandle) -> Result<(), String> 
     use tokio::io::AsyncWriteExt;
     file.flush().await.map_err(|e| format!("flush error: {e}"))?;
     drop(file);
+
+    let actual = hex::encode(hasher.finalize());
+    let expected = expected_sha256();
+    if actual != expected {
+        tokio::fs::remove_file(&tmp).await.ok();
+        return Err(format!(
+            "checksum mismatch for {}: expected {expected}, got {actual}",
+            asset_name()
+        ));
+    }
 
     tokio::fs::rename(&tmp, &dest)
         .await

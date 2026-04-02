@@ -73,3 +73,10 @@ jobs:
           gh release upload demucs-sidecar \
             python/dist/${{ matrix.asset }}* \
             --clobber
+
+      - name: Print SHA-256 for setup.rs
+        shell: bash
+        run: |
+          sha256sum python/dist/${{ matrix.asset }}* 2>/dev/null || \
+            shasum -a 256 python/dist/${{ matrix.asset }}*
+          echo "Update the expected_sha256() entry for '${{ matrix.asset }}' in core/src/setup.rs with the hash above."
