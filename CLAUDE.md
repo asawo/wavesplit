@@ -92,6 +92,25 @@ just dev        # or: pnpm run tauri dev
 | MVP v2  | Next   | Playback engine, beat tracking, bass note display |
 | Later   | —      | Chords, stem mute/solo, loop sections, waveform view |
 
+## Commit & PR conventions
+
+**Commit format:** `<type>: <short description>` (lowercase, no period)
+
+| Type | When to use |
+|------|-------------|
+| `add` | New feature, file, or capability |
+| `fix` | Bug fix |
+| `chore` | Maintenance, releases, tooling |
+| `refactor` | Code restructure with no behaviour change |
+| `docs` | Documentation only |
+
+**Branch naming:** `<type>/<short-description>` — e.g. `add/playback-engine`, `fix/stem-export-path`, `refactor/pipeline-stages`
+
+**PR conventions:**
+- Title mirrors commit format: `add: playback engine`
+- One logical change per PR
+- PR description explains *why*, not just *what*
+
 ## Key constraints
 
 - Bass accuracy is the top priority

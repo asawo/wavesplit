@@ -29,7 +29,7 @@ macOS blocks apps that aren't signed with an Apple notarization certificate. I a
 
 This is message is expected, and Wavesplit is safe. 
 
-To get past this, Ooen Terminal and run:
+To get past this, open Terminal and run:
 
 ```sh
 sudo xattr -cr /Applications/Wavesplit.app
@@ -109,3 +109,24 @@ Track data is stored in:
 | MVP     | YouTube/local input, stem separation, library, export |
 | MVP v2  | Playback engine, beat tracking, bass note display |
 | Later   | Chord detection, stem mute/solo, loop sections, waveform view |
+
+---
+
+## Contributing
+
+**Commit format:** `<type>: <short description>` (lowercase, no period)
+
+| Type | When to use |
+|------|-------------|
+| `add` | New feature, file, or capability |
+| `fix` | Bug fix |
+| `chore` | Maintenance, releases, tooling |
+| `refactor` | Code restructure with no behaviour change |
+| `docs` | Documentation only |
+
+**Branch naming:** `<type>/<short-description>` — e.g. `add/playback-engine`, `fix/stem-export-path`
+
+**PRs:**
+- Title mirrors commit format: `add: playback engine`
+- One logical change per PR
+- Description explains *why*, not just *what*
