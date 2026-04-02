@@ -114,8 +114,8 @@ fmt:
 lint:
     source "$HOME/.cargo/env" && cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
 
-# Run all CI checks locally (check + clippy + test)
-ci: check lint test
+# Run all CI checks locally (clippy + test)
+ci: lint test
 
 # Open app data directory (macOS)
 open-data:
