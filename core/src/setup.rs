@@ -1,10 +1,44 @@
 use std::path::{Path, PathBuf};
 use futures_util::StreamExt;
+use sha2::{Digest, Sha256};
 use tauri::{AppHandle, Emitter};
 
 /// Update this to your GitHub repo (owner/name).
 const GITHUB_REPO: &str = "asawo/wavesplit";
 const RELEASE_TAG: &str = "demucs-sidecar";
+
+async fn fetch_expected_sha256(
+    client: &reqwest::Client,
+    asset: &str,
+) -> Result<String, String> {
+    let url = format!(
+        "https://github.com/{}/releases/download/{}/checksums.txt",
+        GITHUB_REPO, RELEASE_TAG
+    );
+    let response = client
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("failed to fetch checksums.txt: {e}"))?;
+    if !response.status().is_success() {
+        return Err(format!("failed to fetch checksums.txt: HTTP {}", response.status()));
+    }
+    let body = response
+        .text()
+        .await
+        .map_err(|e| format!("failed to read checksums.txt: {e}"))?;
+    for line in body.lines() {
+        // Standard shasum format: "{hash}  {filename}" (two spaces between hash and name).
+        // split_once("  ") consumes both spaces, so `filename` has no leading space.
+        // trim() handles any trailing whitespace or CRLF that survives .lines().
+        if let Some((hash, filename)) = line.split_once("  ") {
+            if filename.trim() == asset {
+                return Ok(hash.trim().to_string());
+            }
+        }
+    }
+    Err(format!("asset '{asset}' not found in checksums.txt"))
+}
 
 fn asset_name() -> &'static str {
     #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
@@ -59,12 +93,13 @@ pub async fn download(demucs_dir: &Path, app: &AppHandle) -> Result<(), String> 
     std::fs::create_dir_all(demucs_dir)
         .map_err(|e| format!("failed to create demucs dir: {e}"))?;
 
+    let client = reqwest::Client::new();
+    let expected = fetch_expected_sha256(&client, asset_name()).await?;
+
     let url = format!(
         "https://github.com/{}/releases/download/{}/{}",
         GITHUB_REPO, RELEASE_TAG, asset_name()
     );
-
-    let client = reqwest::Client::new();
     let response = client
         .get(&url)
         .send()
@@ -84,11 +119,13 @@ pub async fn download(demucs_dir: &Path, app: &AppHandle) -> Result<(), String> 
         .map_err(|e| format!("failed to create temp file: {e}"))?;
 
     let mut downloaded: u64 = 0;
+    let mut hasher = Sha256::new();
     let mut stream = response.bytes_stream();
 
     while let Some(chunk) = stream.next().await {
         let chunk = chunk.map_err(|e| format!("download error: {e}"))?;
         downloaded += chunk.len() as u64;
+        hasher.update(&chunk);
 
         use tokio::io::AsyncWriteExt;
         file.write_all(&chunk)
@@ -105,6 +142,15 @@ pub async fn download(demucs_dir: &Path, app: &AppHandle) -> Result<(), String> 
     use tokio::io::AsyncWriteExt;
     file.flush().await.map_err(|e| format!("flush error: {e}"))?;
     drop(file);
+
+    let actual = hex::encode(hasher.finalize());
+    if actual != expected {
+        tokio::fs::remove_file(&tmp).await.ok();
+        return Err(format!(
+            "checksum mismatch for {}: expected {expected}, got {actual}",
+            asset_name()
+        ));
+    }
 
     tokio::fs::rename(&tmp, &dest)
         .await

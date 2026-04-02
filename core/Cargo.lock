@@ -4998,10 +4998,12 @@ version = "0.1.24"
 dependencies = [
  "chrono",
  "futures-util",
+ "hex",
  "reqwest 0.12.28",
  "rusqlite",
  "serde",
  "serde_json",
+ "sha2",
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",
