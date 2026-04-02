@@ -32,9 +32,12 @@ jobs:
             librsvg2-dev \
             patchelf
 
-      - name: cargo check
-        working-directory: src-tauri
-        run: cargo check --all-targets
+      - name: Create sidecar placeholders
+        run: |
+          mkdir -p src-tauri/binaries
+          for bin in yt-dlp ffmpeg ffprobe; do
+            touch src-tauri/binaries/${bin}-x86_64-unknown-linux-gnu
+          done
 
       - name: cargo clippy
         working-directory: src-tauri

@@ -17,6 +17,26 @@
     }
   })
 
+  const PENDING_ID = '__pending__'
+
+  function handleStarted(title) {
+    tracks = [
+      {
+        id: PENDING_ID,
+        title,
+        artist: null,
+        sort_order: Date.now(),
+        status_download: 'pending',
+        status_stems: 'pending',
+        status_analysis: 'pending',
+        error_message: null,
+        export_path: null,
+        duration_ms: null,
+      },
+      ...tracks,
+    ]
+  }
+
   function handleAdded(_id) {
     refreshTracks?.()
   }
@@ -30,7 +50,7 @@
   <main>
     <section class="add-section">
       <p class="section-label">Add track</p>
-      <AddTrack onAdded={handleAdded} />
+      <AddTrack onAdded={handleAdded} onStarted={handleStarted} />
     </section>
 
     <section class="list-section">
