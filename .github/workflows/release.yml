@@ -9,7 +9,7 @@ env:
   YT_DLP_VERSION: "2025.03.31"     # https://github.com/yt-dlp/yt-dlp/releases
   FFMPEG_MACOS_VERSION: "7.1.1"    # https://evermeet.cx/ffmpeg/ (check for latest release zip name)
   FFMPEG_LINUX_VERSION: "6.1"      # https://ffbinaries.com/api/v1/versions
-  FFMPEG_WIN_TAG: "2025-03-23-12-59"  # https://github.com/BtbN/FFmpeg-Builds/releases
+  FFMPEG_WIN_VERSION: "7.1"  # pins ffmpeg minor version; uses BtbN "latest" release tag (stable filenames per minor version)
 
 jobs:
   # Creates the draft release first so build jobs can upload to it in parallel.
@@ -137,7 +137,7 @@ jobs:
           Invoke-WebRequest -Uri "https://github.com/yt-dlp/yt-dlp/releases/download/${{ env.YT_DLP_VERSION }}/yt-dlp.exe" `
             -OutFile "src-tauri/binaries/yt-dlp-${{ matrix.target }}.exe"
             # ffmpeg — BtbN static build (pinned release tag)
-          Invoke-WebRequest -Uri "https://github.com/BtbN/FFmpeg-Builds/releases/download/${{ env.FFMPEG_WIN_TAG }}/ffmpeg-master-latest-win64-gpl.zip" `
+          Invoke-WebRequest -Uri "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n${{ env.FFMPEG_WIN_VERSION }}-latest-win64-gpl-${{ env.FFMPEG_WIN_VERSION }}.zip" `
             -OutFile ffmpeg.zip
           Expand-Archive ffmpeg.zip -DestinationPath ffmpeg_tmp
           $ffmpegExe = Get-ChildItem -Path ffmpeg_tmp -Filter ffmpeg.exe -Recurse | Select-Object -First 1
