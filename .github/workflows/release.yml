@@ -12,8 +12,57 @@ env:
   FFMPEG_WIN_VERSION: "7.1"  # pins ffmpeg minor version; uses BtbN "latest" release tag (stable filenames per minor version)
 
 jobs:
+  # Validates the tag is valid semver and strictly greater than the previous release.
+  # Prerelease tags (e.g. v1.2.3-rc.1, v0.0.0-test) skip the monotonic check.
+  validate-version:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate semver and monotonic increment
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ github.ref_name }}"
+          NEW="${TAG#v}"
+
+          # Must match X.Y.Z or X.Y.Z-prerelease
+          if ! [[ "$NEW" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9._-]+)?$ ]]; then
+            echo "::error::Tag '$TAG' is not valid semver (expected vX.Y.Z or vX.Y.Z-prerelease)"
+            exit 1
+          fi
+
+          # Skip monotonic check for prerelease tags
+          if [[ "$NEW" == *-* ]]; then
+            echo "Prerelease tag '$TAG' — skipping monotonic check."
+            exit 0
+          fi
+
+          # Fetch the most recent stable release version
+          PREV=$(gh release list \
+            --repo "${{ github.repository }}" \
+            --limit 50 \
+            --json tagName,isPrerelease \
+            | python3 -c "
+          import sys, json
+          releases = json.load(sys.stdin)
+          stable = [r['tagName'].lstrip('v') for r in releases
+                    if not r['isPrerelease'] and r['tagName'].startswith('v')
+                    and '-' not in r['tagName'].lstrip('v')]
+          print(stable[0] if stable else '0.0.0')
+          ")
+
+          python3 -c "
+          import sys
+          new  = tuple(int(x) for x in '${NEW}'.split('.'))
+          prev = tuple(int(x) for x in '${PREV}'.split('.'))
+          if new <= prev:
+              print(f\"::error::${NEW} is not greater than previous release ${PREV}\")
+              sys.exit(1)
+          print(f'Version bump OK: ${PREV} → ${NEW}')
+          "
+
   # Creates the draft release first so build jobs can upload to it in parallel.
   create-release:
+    needs: validate-version
     permissions:
       contents: write
     runs-on: ubuntu-latest
