@@ -4,12 +4,12 @@ on:
   push:
     branches: [main]
     paths:
-      - 'src-tauri/**'
+      - 'core/**'
       - '.github/workflows/ci.yml'
   pull_request:
     branches: [main]
     paths:
-      - 'src-tauri/**'
+      - 'core/**'
       - '.github/workflows/ci.yml'
 
 jobs:
@@ -27,7 +27,7 @@ jobs:
       - name: Rust cache
         uses: swatinem/rust-cache@v2
         with:
-          workspaces: src-tauri
+          workspaces: core
 
       - name: Install Linux system dependencies
         run: |
@@ -40,15 +40,15 @@ jobs:
 
       - name: Create sidecar placeholders
         run: |
-          mkdir -p src-tauri/binaries
+          mkdir -p core/binaries
           for bin in yt-dlp ffmpeg ffprobe; do
-            touch src-tauri/binaries/${bin}-x86_64-unknown-linux-gnu
+            touch core/binaries/${bin}-x86_64-unknown-linux-gnu
           done
 
       - name: cargo clippy
-        working-directory: src-tauri
+        working-directory: core
         run: cargo clippy --all-targets -- -D warnings
 
       - name: cargo test
-        working-directory: src-tauri
+        working-directory: core
         run: cargo test
