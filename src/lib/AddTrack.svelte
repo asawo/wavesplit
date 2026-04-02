@@ -2,7 +2,7 @@
   import { invoke } from '@tauri-apps/api/core'
   import { open as openDialog } from '@tauri-apps/plugin-dialog'
 
-  let { onAdded } = $props()
+  let { onAdded, onStarted } = $props()
 
   let url = $state('')
   let loading = $state(false)
@@ -12,12 +12,15 @@
     if (!url.trim()) return
     loading = true
     error = ''
+    const pendingUrl = url.trim()
+    url = ''
+    onStarted(pendingUrl)
     try {
-      const id = await invoke('add_track_youtube', { url: url.trim() })
-      url = ''
+      const id = await invoke('add_track_youtube', { url: pendingUrl })
       onAdded(id)
     } catch (e) {
       error = String(e)
+      onAdded(null)
     } finally {
       loading = false
     }
@@ -31,11 +34,13 @@
     if (!selected) return
     loading = true
     error = ''
+    onStarted(selected.split('/').pop() ?? 'Local file')
     try {
       const id = await invoke('add_track_local', { path: selected })
       onAdded(id)
     } catch (e) {
       error = String(e)
+      onAdded(null)
     } finally {
       loading = false
     }

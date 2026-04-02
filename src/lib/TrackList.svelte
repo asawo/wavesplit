@@ -59,6 +59,8 @@
 
   onDestroy(() => unlisten?.())
 
+  const PENDING_ID = '__pending__'
+
   async function refreshTracks() {
     tracks = await invoke('list_tracks')
   }
@@ -222,9 +224,12 @@
   {/if}
 
   {#each displayTracks as track (track.id)}
-    <div class="track" class:ready={isReady(track)} class:error={hasError(track)}>
+    <div class="track" class:ready={isReady(track)} class:error={hasError(track)} class:pending={track.id === PENDING_ID}>
       <div class="track-info">
-        {#if editingId === track.id}
+        {#if track.id === PENDING_ID}
+          <span class="title">{track.title}</span>
+          <span class="status processing">Adding…</span>
+        {:else if editingId === track.id}
           <input
             class="edit-input title-input"
             bind:value={editTitle}
@@ -246,27 +251,33 @@
             {track.artist ?? '—'}
           </span>
         {/if}
-        <span class="status" class:processing={isProcessing(track)} class:ready={isReady(track)}>
-          {statusLabel(track)}
-        </span>
-        {#if isProcessing(track)}
-          <div class="progress-bar">
-            <div class="progress-fill" style="width: {progressPct(track)}%"></div>
-          </div>
+        {#if track.id !== PENDING_ID}
+          <span class="status" class:processing={isProcessing(track)} class:ready={isReady(track)}>
+            {statusLabel(track)}
+          </span>
+          {#if isProcessing(track)}
+            <div class="progress-bar">
+              <div class="progress-fill" style="width: {progressPct(track)}%"></div>
+            </div>
+          {/if}
         {/if}
       </div>
       <div class="track-actions">
-        {#if isReady(track)}
-          {#if track.export_path}
-            <button class="open-btn" onclick={() => openFolder(track.export_path)} title={track.export_path}>
-              Open folder
+        {#if track.id === PENDING_ID}
+          <span class="spinner" aria-label="Adding track"></span>
+        {:else}
+          {#if isReady(track)}
+            {#if track.export_path}
+              <button class="open-btn" onclick={() => openFolder(track.export_path)} title={track.export_path}>
+                Open folder
+              </button>
+            {/if}
+            <button class="export-btn" onclick={() => exportStems(track)} disabled={exportingId === track.id}>
+              {exportingId === track.id ? 'Exporting…' : '↓ Export stems'}
             </button>
           {/if}
-          <button class="export-btn" onclick={() => exportStems(track)} disabled={exportingId === track.id}>
-            {exportingId === track.id ? 'Exporting…' : '↓ Export stems'}
-          </button>
+          <button class="delete-btn" onclick={() => deleteTrack(track)} title="Delete track">✕</button>
         {/if}
-        <button class="delete-btn" onclick={() => deleteTrack(track)} title="Delete track">✕</button>
       </div>
     </div>
   {/each}
@@ -480,5 +491,24 @@
   .delete-btn:hover {
     color: var(--color-error);
     background: var(--bg-track-error);
+  }
+
+  .track.pending {
+    opacity: 0.7;
+  }
+
+  .spinner {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border: 2px solid var(--border);
+    border-top-color: var(--color-processing);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    flex-shrink: 0;
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
   }
 </style>
