@@ -5,6 +5,12 @@ on:
     tags:
       - "v[0-9]*"
 
+env:
+  YT_DLP_VERSION: "2025.03.31"     # https://github.com/yt-dlp/yt-dlp/releases
+  FFMPEG_MACOS_VERSION: "7.1.1"    # https://evermeet.cx/ffmpeg/ (check for latest release zip name)
+  FFMPEG_LINUX_VERSION: "6.1"      # https://ffbinaries.com/api/v1/versions
+  FFMPEG_WIN_TAG: "2025-03-23-12-59"  # https://github.com/BtbN/FFmpeg-Builds/releases
+
 jobs:
   # Creates the draft release first so build jobs can upload to it in parallel.
   create-release:
@@ -55,7 +61,7 @@ jobs:
       - name: Install pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: latest
+          version: 10.7.1
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -91,13 +97,13 @@ jobs:
         run: |
           mkdir -p src-tauri/binaries
           # yt-dlp — universal binary, runs natively on both arm64 and x86_64
-          curl -fsSL https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos \
+          curl -fsSL "https://github.com/yt-dlp/yt-dlp/releases/download/${{ env.YT_DLP_VERSION }}/yt-dlp_macos" \
             -o src-tauri/binaries/yt-dlp-${{ matrix.target }}
           chmod +x src-tauri/binaries/yt-dlp-${{ matrix.target }}
           # ffmpeg + ffprobe — evermeet.cx x86_64 static builds.
           # No public static arm64 build exists; x86_64 runs via Rosetta 2 on Apple Silicon.
-          curl -fsSL "https://evermeet.cx/ffmpeg/getrelease/ffmpeg/zip" -o ffmpeg.zip
-          curl -fsSL "https://evermeet.cx/ffmpeg/getrelease/ffprobe/zip" -o ffprobe.zip
+          curl -fsSL "https://evermeet.cx/ffmpeg/ffmpeg-${{ env.FFMPEG_MACOS_VERSION }}.zip" -o ffmpeg.zip
+          curl -fsSL "https://evermeet.cx/ffmpeg/ffprobe-${{ env.FFMPEG_MACOS_VERSION }}.zip" -o ffprobe.zip
           unzip -o ffmpeg.zip ffmpeg -d .
           unzip -o ffprobe.zip ffprobe -d .
           cp ffmpeg src-tauri/binaries/ffmpeg-${{ matrix.target }}
@@ -108,11 +114,11 @@ jobs:
         run: |
           mkdir -p src-tauri/binaries
           # yt-dlp
-          curl -fsSL https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp \
+          curl -fsSL "https://github.com/yt-dlp/yt-dlp/releases/download/${{ env.YT_DLP_VERSION }}/yt-dlp" \
             -o src-tauri/binaries/yt-dlp-${{ matrix.target }}
           chmod +x src-tauri/binaries/yt-dlp-${{ matrix.target }}
-          # ffmpeg + ffprobe — static builds from ffbinaries.com
-          FFBIN=$(curl -fsSL https://ffbinaries.com/api/v1/version/latest)
+          # ffmpeg + ffprobe — static builds from ffbinaries.com (pinned version)
+          FFBIN=$(curl -fsSL "https://ffbinaries.com/api/v1/version/${{ env.FFMPEG_LINUX_VERSION }}")
           FFMPEG_URL=$(echo "$FFBIN" | python3 -c "import sys,json; print(json.load(sys.stdin)['bin']['linux-64']['ffmpeg'])")
           FFPROBE_URL=$(echo "$FFBIN" | python3 -c "import sys,json; print(json.load(sys.stdin)['bin']['linux-64']['ffprobe'])")
           curl -fsSL "$FFMPEG_URL" -o ffmpeg.zip
@@ -128,10 +134,10 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path src-tauri/binaries | Out-Null
           # yt-dlp
-          Invoke-WebRequest -Uri "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe" `
+          Invoke-WebRequest -Uri "https://github.com/yt-dlp/yt-dlp/releases/download/${{ env.YT_DLP_VERSION }}/yt-dlp.exe" `
             -OutFile "src-tauri/binaries/yt-dlp-${{ matrix.target }}.exe"
-            # ffmpeg — BtbN static build
-          Invoke-WebRequest -Uri "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip" `
+            # ffmpeg — BtbN static build (pinned release tag)
+          Invoke-WebRequest -Uri "https://github.com/BtbN/FFmpeg-Builds/releases/download/${{ env.FFMPEG_WIN_TAG }}/ffmpeg-master-latest-win64-gpl.zip" `
             -OutFile ffmpeg.zip
           Expand-Archive ffmpeg.zip -DestinationPath ffmpeg_tmp
           $ffmpegExe = Get-ChildItem -Path ffmpeg_tmp -Filter ffmpeg.exe -Recurse | Select-Object -First 1
