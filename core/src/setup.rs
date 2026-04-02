@@ -7,19 +7,35 @@ use tauri::{AppHandle, Emitter};
 const GITHUB_REPO: &str = "asawo/wavesplit";
 const RELEASE_TAG: &str = "demucs-sidecar";
 
-/// SHA-256 digests for each platform binary.
-/// Update these each time build-demucs-sidecar.yml produces new binaries.
-/// Fetch the current values:
-///   gh release download demucs-sidecar --pattern checksums.txt && cat checksums.txt
-fn expected_sha256() -> &'static str {
-    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
-    return "0ddc40c14ce5d61a4d0ec8d6ba6af387665601133a36fe14c68086bffeefab31";
-    #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
-    return "a921410c07faebb6dc4fb61f1ce519a1e9719defc2656eaa789ab68ac8e0c35d";
-    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-    return "c92dbbeab6e2f4c8d83cb0babfbfd18110e3c7a43bd2f1938bb618b138681c5b";
-    #[cfg(all(target_os = "windows", target_arch = "x86_64"))]
-    return "f5d8613d97c7168c3a5be2160ef2ce3117bbed264dba57ee218344e9d6e403f4";
+async fn fetch_expected_sha256(
+    client: &reqwest::Client,
+    asset: &str,
+) -> Result<String, String> {
+    let url = format!(
+        "https://github.com/{}/releases/download/{}/checksums.txt",
+        GITHUB_REPO, RELEASE_TAG
+    );
+    let response = client
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("failed to fetch checksums.txt: {e}"))?;
+    if !response.status().is_success() {
+        return Err(format!("failed to fetch checksums.txt: HTTP {}", response.status()));
+    }
+    let body = response
+        .text()
+        .await
+        .map_err(|e| format!("failed to read checksums.txt: {e}"))?;
+    for line in body.lines() {
+        // Standard shasum format: "{hash}  {filename}" (two spaces)
+        if let Some((hash, filename)) = line.split_once("  ") {
+            if filename.trim() == asset {
+                return Ok(hash.trim().to_string());
+            }
+        }
+    }
+    Err(format!("asset '{asset}' not found in checksums.txt"))
 }
 
 fn asset_name() -> &'static str {
@@ -75,12 +91,13 @@ pub async fn download(demucs_dir: &Path, app: &AppHandle) -> Result<(), String> 
     std::fs::create_dir_all(demucs_dir)
         .map_err(|e| format!("failed to create demucs dir: {e}"))?;
 
+    let client = reqwest::Client::new();
+    let expected = fetch_expected_sha256(&client, asset_name()).await?;
+
     let url = format!(
         "https://github.com/{}/releases/download/{}/{}",
         GITHUB_REPO, RELEASE_TAG, asset_name()
     );
-
-    let client = reqwest::Client::new();
     let response = client
         .get(&url)
         .send()
@@ -125,7 +142,6 @@ pub async fn download(demucs_dir: &Path, app: &AppHandle) -> Result<(), String> 
     drop(file);
 
     let actual = hex::encode(hasher.finalize());
-    let expected = expected_sha256();
     if actual != expected {
         tokio::fs::remove_file(&tmp).await.ok();
         return Err(format!(
