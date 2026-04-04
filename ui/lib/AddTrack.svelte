@@ -34,7 +34,8 @@
     if (!selected) return
     loading = true
     error = ''
-    onStarted(selected.split('/').pop() ?? 'Local file')
+    // Normalize backslashes for Windows paths (display only — `selected` is passed as-is to the backend)
+    onStarted(selected.replace(/\\/g, '/').split('/').pop() ?? 'Local file')
     try {
       const id = await invoke('add_track_local', { path: selected })
       onAdded(id)
