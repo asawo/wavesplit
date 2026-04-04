@@ -2,6 +2,7 @@ use std::sync::Arc;
 use tauri::AppHandle;
 use uuid::Uuid;
 use chrono::Utc;
+use tokio_util::sync::CancellationToken;
 
 use crate::db::{self, Track};
 use crate::paths;
@@ -68,12 +69,23 @@ async fn add_track(
         }).map_err(|e| e.to_string())?;
     }
 
-    // Spawn pipeline in background
+    // Spawn pipeline in background with a cancellation token.
+    let token = CancellationToken::new();
+    {
+        let mut tasks = state.tasks.lock().map_err(|_| "tasks unavailable".to_string())?;
+        tasks.insert(id.clone(), token.clone());
+    }
     let db = Arc::clone(&state.db);
     let data_dir = state.data_dir.clone();
     let demucs_dir = state.demucs_dir.clone();
+    let tasks = Arc::clone(&state.tasks);
     let track_id = id.clone();
-    tokio::spawn(pipeline::run(track_id, source, db, data_dir, demucs_dir, app));
+    tokio::spawn(async move {
+        pipeline::run(track_id.clone(), source, db, data_dir, demucs_dir, token, app).await;
+        if let Ok(mut tasks) = tasks.lock() {
+            tasks.remove(&track_id);
+        }
+    });
 
     Ok(id)
 }
