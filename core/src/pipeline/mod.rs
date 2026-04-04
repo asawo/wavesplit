@@ -6,6 +6,7 @@ mod stems;
 use rusqlite::Connection;
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter};
+use tokio_util::sync::CancellationToken;
 
 use crate::db;
 use crate::paths;
@@ -33,12 +34,14 @@ pub enum Source {
 
 /// Run the full pipeline for a track: download → stems → analysis.
 /// Each stage updates the DB status and emits a Tauri event.
+/// Returns early (silently) if the cancellation token is triggered.
 pub async fn run(
     track_id: String,
     source: Source,
     db: Arc<Mutex<Connection>>,
     data_dir: std::path::PathBuf,
     demucs_dir: std::path::PathBuf,
+    token: CancellationToken,
     app: AppHandle,
 ) {
     let source_wav = paths::source_wav(&data_dir, &track_id);
@@ -50,6 +53,7 @@ pub async fn run(
     let cache_dir = setup::cache_dir(&demucs_dir);
 
     // --- Stage 1: download ---
+    if token.is_cancelled() { return; }
     emit(&app, &track_id, "download", "started", None);
     let dl_result = tokio::task::spawn_blocking({
         let source_wav = source_wav.clone();
@@ -74,6 +78,7 @@ pub async fn run(
     }
 
     // --- Stage 2: stems ---
+    if token.is_cancelled() { return; }
     emit(&app, &track_id, "stems", "started", None);
     let stems_result = tokio::task::spawn_blocking({
         let source_wav = source_wav.clone();
@@ -95,6 +100,8 @@ pub async fn run(
         Err(e) => { emit(&app, &track_id, "stems", "error", Some(e)); return; }
     }
 
+    // --- Stage 3: analysis ---
+    if token.is_cancelled() { return; }
     // TODO: re-enable analysis once beat/note detection is ready (MVP v2)
     {
         let conn = db.lock().unwrap_or_else(|e| e.into_inner());

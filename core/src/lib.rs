@@ -4,9 +4,11 @@ mod paths;
 mod pipeline;
 mod setup;
 
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use rusqlite::Connection;
 use tauri::{AppHandle, Manager};
+use tokio_util::sync::CancellationToken;
 
 pub struct AppState {
     pub db: Arc<Mutex<Connection>>,
@@ -14,6 +16,8 @@ pub struct AppState {
     /// Directory that holds the frozen demucs binary and its model cache.
     /// Default: {app_data}/demucs/
     pub demucs_dir: std::path::PathBuf,
+    /// Cancellation tokens for in-flight pipeline tasks, keyed by track ID.
+    pub tasks: Arc<Mutex<HashMap<String, CancellationToken>>>,
 }
 
 #[tauri::command]
@@ -24,6 +28,12 @@ fn list_tracks(state: tauri::State<AppState>) -> Result<Vec<db::Track>, String> 
 
 #[tauri::command]
 fn delete_track(id: String, state: tauri::State<AppState>) -> Result<(), String> {
+    // Cancel any in-flight pipeline task before touching the filesystem.
+    if let Ok(mut tasks) = state.tasks.lock() {
+        if let Some(token) = tasks.remove(&id) {
+            token.cancel();
+        }
+    }
     let conn = state.db.lock().map_err(|_| "database unavailable".to_string())?;
     db::delete_track(&conn, &id).map_err(|e| e.to_string())?;
     drop(conn);
@@ -69,6 +79,7 @@ pub fn run() {
                 db: Arc::new(Mutex::new(conn)),
                 data_dir,
                 demucs_dir,
+                tasks: Arc::new(Mutex::new(HashMap::new())),
             });
 
             Ok(())
