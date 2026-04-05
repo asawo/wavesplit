@@ -244,7 +244,8 @@ jobs:
       - name: Verify code signature (macOS)
         if: matrix.os == 'macos-latest'
         run: |
-          APP=$(find core/target/${{ matrix.target }}/release/bundle/macos -name "*.app" | head -1)
+          APP=$(find core/target/${{ matrix.target }}/release/bundle -name "*.app" -type d | head -1)
+          echo "App path: $APP"
           echo "=== App signature ==="
           codesign -dv --verbose=4 "$APP" 2>&1 || true
           echo "=== Gatekeeper assessment ==="
