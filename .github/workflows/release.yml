@@ -200,16 +200,48 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install
 
+      # Import the self-signed code signing certificate and mark it as trusted.
+      # tauri-action's built-in import skips the trust step, so we handle it ourselves
+      # and omit APPLE_CERTIFICATE from the Build step to prevent a conflicting re-import.
+      - name: Import signing certificate (macOS)
+        if: matrix.os == 'macos-latest'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        run: |
+          KEYCHAIN_PATH=$RUNNER_TEMP/build.keychain-db
+          KEYCHAIN_PASSWORD=$(openssl rand -hex 16)
+
+          echo "$APPLE_CERTIFICATE" | base64 --decode > /tmp/certificate.p12
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import /tmp/certificate.p12 -k "$KEYCHAIN_PATH" \
+            -P "$APPLE_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12
+          security set-key-partition-list -S apple-tool:,apple: \
+            -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          # Trust the self-signed cert as a code-signing root in our keychain
+          security find-certificate -c "$APPLE_SIGNING_IDENTITY" -a -p "$KEYCHAIN_PATH" \
+            > /tmp/cert.pem
+          security add-trusted-cert -r trustRoot -k "$KEYCHAIN_PATH" /tmp/cert.pem
+
+          # Make keychain available to codesign
+          security list-keychains -d user -s "$KEYCHAIN_PATH" \
+            $(security list-keychains -d user | xargs)
+          security default-keychain -s "$KEYCHAIN_PATH"
+
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+          rm /tmp/certificate.p12 /tmp/cert.pem
+
       - name: Build
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Self-signed cert: users see "unidentified developer" (right-click > Open works)
-          # vs. ad-hoc (-) which shows "Apple could not verify" and requires System Settings.
-          # Set up: Keychain Access → Certificate Assistant → Create a Certificate (Code Signing),
-          # export as .p12, base64-encode, store as APPLE_CERTIFICATE + APPLE_CERTIFICATE_PASSWORD secrets.
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          # Certificate is pre-imported with trust in the step above; omitting
+          # APPLE_CERTIFICATE here prevents tauri-action from doing a conflicting re-import.
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           # Full notarization (optional, requires paid Apple Developer account)
           # APPLE_ID: ${{ secrets.APPLE_ID }}
