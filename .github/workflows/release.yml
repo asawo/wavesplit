@@ -204,12 +204,14 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Ad-hoc signing: removes "app is damaged" Gatekeeper error; users see "unidentified developer" instead
-          APPLE_SIGNING_IDENTITY: "-"
-          # Full Apple signing + notarization (optional, requires paid Developer account)
-          # APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          # APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          # APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          # Self-signed cert: users see "unidentified developer" (right-click > Open works)
+          # vs. ad-hoc (-) which shows "Apple could not verify" and requires System Settings.
+          # Set up: Keychain Access → Certificate Assistant → Create a Certificate (Code Signing),
+          # export as .p12, base64-encode, store as APPLE_CERTIFICATE + APPLE_CERTIFICATE_PASSWORD secrets.
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          # Full notarization (optional, requires paid Apple Developer account)
           # APPLE_ID: ${{ secrets.APPLE_ID }}
           # APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           # APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
