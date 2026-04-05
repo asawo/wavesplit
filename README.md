@@ -27,9 +27,7 @@ Download the latest `.dmg` from the [Releases](https://github.com/asawo/wavespli
 
 Wavesplit is not notarized with Apple (that requires a $99/year developer account). macOS will block the first launch, but it's safe to open.
 
-**Option 1 — right-click the app:** Right-click (or Control-click) `Wavesplit.app` and select **Open**, then confirm in the dialog.
-
-**Option 2 — System Settings:** Open **System Settings → Privacy & Security**, scroll down to the "Security" section, and click **Open Anyway** next to the Wavesplit entry.
+Open **System Settings → Privacy & Security**, scroll down to the "Security" section, and click **Open Anyway** next to the Wavesplit entry.
 
 You only need to do this once.
 
