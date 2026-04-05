@@ -200,56 +200,23 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install
 
-      # tauri-action's built-in certificate import only gets the private key from this
-      # .p12 format, not the certificate, so "failed to resolve signing identity" results.
-      # We import manually instead and omit APPLE_CERTIFICATE from the Build step.
-      - name: Import signing certificate (macOS)
-        if: matrix.os == 'macos-latest'
-        env:
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-        run: |
-          KEYCHAIN_PATH=$RUNNER_TEMP/build.keychain-db
-          KEYCHAIN_PASSWORD=$(openssl rand -hex 16)
-
-          echo "$APPLE_CERTIFICATE" | base64 --decode > /tmp/certificate.p12
-
-          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security import /tmp/certificate.p12 -k "$KEYCHAIN_PATH" \
-            -P "$APPLE_CERTIFICATE_PASSWORD" -A -T /usr/bin/codesign
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s \
-            -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security list-keychains -d user -s "$KEYCHAIN_PATH" \
-            $(security list-keychains -d user | xargs)
-          security default-keychain -s "$KEYCHAIN_PATH"
-
-          rm /tmp/certificate.p12
-
       - name: Build
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Certificate pre-imported above; omitting APPLE_CERTIFICATE prevents
-          # tauri-action from doing a conflicting re-import that drops the cert.
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          # Full notarization (optional, requires paid Apple Developer account)
+          # Ad-hoc signing: prevents "app is damaged" Gatekeeper error on macOS.
+          # On Sonoma, all non-notarized apps show "Apple could not verify is free of malware"
+          # regardless of signing type. Signing ensures System Settings → Privacy & Security
+          # shows "Open Anyway". Full notarization requires a paid Apple Developer account.
+          APPLE_SIGNING_IDENTITY: "-"
+          # APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          # APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          # APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           # APPLE_ID: ${{ secrets.APPLE_ID }}
           # APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           # APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           args: --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
-
-      - name: Verify code signature (macOS)
-        if: matrix.os == 'macos-latest'
-        run: |
-          APP=$(find core/target/${{ matrix.target }}/release/bundle -name "*.app" -type d | head -1)
-          echo "App path: $APP"
-          echo "=== App signature ==="
-          codesign -dv --verbose=4 "$APP" 2>&1 || true
-          echo "=== Gatekeeper assessment ==="
-          spctl -a -vvv "$APP" 2>&1 || true
 
       - name: Upload artifacts
         env:
