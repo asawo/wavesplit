@@ -204,7 +204,9 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # macOS signing (optional)
+          # Ad-hoc signing: removes "app is damaged" Gatekeeper error; users see "unidentified developer" instead
+          APPLE_SIGNING_IDENTITY: "-"
+          # Full Apple signing + notarization (optional, requires paid Developer account)
           # APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           # APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           # APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
