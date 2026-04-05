@@ -200,40 +200,16 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install
 
-      # Import the self-signed code signing certificate into a temporary keychain.
-      # We handle import ourselves (omitting APPLE_CERTIFICATE from the Build step)
-      # so tauri-action doesn't do a conflicting re-import. codesign doesn't require
-      # the cert to be a trusted root — it just needs the identity in an accessible keychain.
-      - name: Import signing certificate (macOS)
-        if: matrix.os == 'macos-latest'
-        env:
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-        run: |
-          KEYCHAIN_PATH=$RUNNER_TEMP/build.keychain-db
-          KEYCHAIN_PASSWORD=$(openssl rand -hex 16)
-
-          echo "$APPLE_CERTIFICATE" | base64 --decode > /tmp/certificate.p12
-
-          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security import /tmp/certificate.p12 -k "$KEYCHAIN_PATH" \
-            -P "$APPLE_CERTIFICATE_PASSWORD" -A -T /usr/bin/codesign
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s \
-            -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security list-keychains -d user -s "$KEYCHAIN_PATH" \
-            $(security list-keychains -d user | xargs)
-          security default-keychain -s "$KEYCHAIN_PATH"
-
-          rm /tmp/certificate.p12
-
       - name: Build
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Certificate is pre-imported with trust in the step above; omitting
-          # APPLE_CERTIFICATE here prevents tauri-action from doing a conflicting re-import.
+          # Self-signed cert signing: prevents "app is damaged" Gatekeeper error.
+          # On macOS Ventura/Sonoma all non-notarized apps show "Apple could not verify
+          # [app] is free of malware" regardless of signing type. Signing ensures
+          # System Settings → Privacy & Security shows "Open Anyway" for users to bypass.
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           # Full notarization (optional, requires paid Apple Developer account)
           # APPLE_ID: ${{ secrets.APPLE_ID }}
@@ -241,6 +217,15 @@ jobs:
           # APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           args: --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
+
+      - name: Verify code signature (macOS)
+        if: matrix.os == 'macos-latest'
+        run: |
+          APP=$(find core/target/${{ matrix.target }}/release/bundle/macos -name "*.app" | head -1)
+          echo "=== App signature ==="
+          codesign -dv --verbose=4 "$APP" 2>&1 || true
+          echo "=== Gatekeeper assessment ==="
+          spctl -a -vvv "$APP" 2>&1 || true
 
       - name: Upload artifacts
         env:

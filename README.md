@@ -23,7 +23,7 @@ Built with Tauri (Rust + Svelte).
 
 Download the latest `.dmg` from the [Releases](https://github.com/asawo/wavesplit/releases) page, open it, and drag Wavesplit to your Applications folder.
 
-### "Wavesplit cannot be opened because it is from an unidentified developer"
+### "Apple could not verify Wavesplit is free of malware"
 
 Wavesplit is not notarized with Apple (that requires a $99/year developer account). macOS will block the first launch, but it's safe to open.
 
