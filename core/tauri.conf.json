@@ -25,6 +25,10 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "macOS": {
+      "signingIdentity": "-",
+      "entitlements": "./entitlements.plist"
+    },
     "externalBin": [
       "binaries/yt-dlp",
       "binaries/ffmpeg",
