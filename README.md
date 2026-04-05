@@ -23,17 +23,13 @@ Built with Tauri (Rust + Svelte).
 
 Download the latest `.dmg` from the [Releases](https://github.com/asawo/wavesplit/releases) page, open it, and drag Wavesplit to your Applications folder.
 
-### "Wavesplit is damaged and can't be opened"
+### "Wavesplit cannot be opened because it is from an unidentified developer"
 
-macOS blocks apps that aren't signed with an Apple notarization certificate. I also don't want to pay Apple $99/year for this privilege. 
+Wavesplit is not notarized with Apple (that requires a $99/year developer account). macOS will block the first launch, but it's safe to open.
 
-This is message is expected, and Wavesplit is safe. 
+**Option 1 — right-click the app:** Right-click (or Control-click) `Wavesplit.app` and select **Open**, then confirm in the dialog.
 
-To get past this, open Terminal and run:
-
-```sh
-sudo xattr -cr /Applications/Wavesplit.app
-```
+**Option 2 — System Settings:** Open **System Settings → Privacy & Security**, scroll down to the "Security" section, and click **Open Anyway** next to the Wavesplit entry.
 
 You only need to do this once.
 
