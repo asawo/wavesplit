@@ -244,10 +244,10 @@
             onkeydown={(e) => onEditKeydown(e, track)}
           />
         {:else}
-          <span class="title" onclick={() => startEdit(track)} role="button" tabindex="0">
+          <span class="title" onclick={() => startEdit(track)} onkeydown={(e) => e.key === 'Enter' && startEdit(track)} role="button" tabindex="0">
             {track.title}
           </span>
-          <span class="artist" onclick={() => startEdit(track)} role="button" tabindex="0">
+          <span class="artist" onclick={() => startEdit(track)} onkeydown={(e) => e.key === 'Enter' && startEdit(track)} role="button" tabindex="0">
             {track.artist ?? '—'}
           </span>
         {/if}
