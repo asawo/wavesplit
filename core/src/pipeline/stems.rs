@@ -17,39 +17,45 @@ pub fn separate(
         .ok_or("stems_dir has no parent")?
         .join("demucs_tmp");
     std::fs::create_dir_all(&tmp).map_err(|e| format!("mkdir demucs_tmp: {e}"))?;
-    std::fs::create_dir_all(cache_dir).map_err(|e| format!("mkdir cache_dir: {e}"))?;
 
-    let output = Command::new(demucs_bin)
-        .args([
-            "--name", "htdemucs",
-            "-o", tmp.to_str().ok_or("invalid tmp path")?,
-            source_wav.to_str().ok_or("invalid source_wav path")?,
-        ])
-        .env("TORCH_HOME", cache_dir)
-        .output()
-        .map_err(|e| format!("demucs failed to start: {e}"))?;
+    // Run everything that follows in a closure so demucs_tmp is always cleaned up,
+    // regardless of which step fails. It can be several hundred MB.
+    let result: Result<(), String> = (|| {
+        std::fs::create_dir_all(cache_dir).map_err(|e| format!("mkdir cache_dir: {e}"))?;
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("demucs failed: {stderr}"));
-    }
+        let output = Command::new(demucs_bin)
+            .args([
+                "--name", "htdemucs",
+                "-o", tmp.to_str().ok_or("invalid tmp path")?,
+                source_wav.to_str().ok_or("invalid source_wav path")?,
+            ])
+            .env("TORCH_HOME", cache_dir)
+            .output()
+            .map_err(|e| format!("demucs failed to start: {e}"))?;
 
-    let source_stem = source_wav
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .ok_or("invalid source filename")?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(format!("demucs failed: {stderr}"));
+        }
 
-    let demucs_out = tmp.join("htdemucs").join(source_stem);
-    std::fs::create_dir_all(stems_dir).map_err(|e| format!("mkdir stems_dir: {e}"))?;
+        let source_stem = source_wav
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .ok_or("invalid source filename")?;
 
-    for stem_name in &["bass", "drums", "vocals", "other"] {
-        let src = demucs_out.join(format!("{stem_name}.wav"));
-        let dst = stems_dir.join(format!("{stem_name}.wav"));
-        std::fs::rename(&src, &dst)
-            .map_err(|e| format!("failed to move {stem_name}.wav: {e}"))?;
-    }
+        let demucs_out = tmp.join("htdemucs").join(source_stem);
+        std::fs::create_dir_all(stems_dir).map_err(|e| format!("mkdir stems_dir: {e}"))?;
 
-    std::fs::remove_dir_all(&tmp).map_err(|e| format!("cleanup demucs_tmp: {e}"))?;
+        for stem_name in &["bass", "drums", "vocals", "other"] {
+            let src = demucs_out.join(format!("{stem_name}.wav"));
+            let dst = stems_dir.join(format!("{stem_name}.wav"));
+            std::fs::rename(&src, &dst)
+                .map_err(|e| format!("failed to move {stem_name}.wav: {e}"))?;
+        }
 
-    Ok(())
+        Ok(())
+    })();
+
+    let _ = std::fs::remove_dir_all(&tmp);
+    result
 }
