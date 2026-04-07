@@ -32,9 +32,16 @@ pub enum Source {
     Local(std::path::PathBuf),
 }
 
-/// Run the full pipeline for a track: download → stems → analysis.
+pub enum StartStage {
+    Download,
+    Stems,
+    Analysis,
+}
+
+/// Run the pipeline for a track starting from `start_stage`: download → stems → analysis.
 /// Each stage updates the DB status and emits a Tauri event.
 /// Returns early (silently) if the cancellation token is triggered.
+#[allow(clippy::too_many_arguments)]
 pub async fn run(
     track_id: String,
     source: Source,
@@ -43,6 +50,7 @@ pub async fn run(
     demucs_dir: std::path::PathBuf,
     token: CancellationToken,
     app: AppHandle,
+    start_stage: StartStage,
 ) {
     let source_wav = paths::source_wav(&data_dir, &track_id);
     let stems_dir = paths::stems_dir(&data_dir, &track_id);
@@ -53,51 +61,55 @@ pub async fn run(
     let cache_dir = setup::cache_dir(&demucs_dir);
 
     // --- Stage 1: download ---
-    if token.is_cancelled() { return; }
-    emit(&app, &track_id, "download", "started", None);
-    let dl_result = tokio::task::spawn_blocking({
-        let source_wav = source_wav.clone();
-        move || match &source {
-            Source::Youtube(url) => download::from_youtube(url, &source_wav),
-            Source::Local(path) => download::from_local(path, &source_wav),
-        }
-    })
-    .await
-    .unwrap_or_else(|e| Err(e.to_string()));
+    if matches!(start_stage, StartStage::Download) {
+        if token.is_cancelled() { return; }
+        emit(&app, &track_id, "download", "started", None);
+        let dl_result = tokio::task::spawn_blocking({
+            let source_wav = source_wav.clone();
+            move || match &source {
+                Source::Youtube(url) => download::from_youtube(url, &source_wav),
+                Source::Local(path) => download::from_local(path, &source_wav),
+            }
+        })
+        .await
+        .unwrap_or_else(|e| Err(e.to_string()));
 
-    {
-        let conn = db.lock().unwrap_or_else(|e| e.into_inner());
-        match &dl_result {
-            Ok(_) => { let _ = db::update_status(&conn, &track_id, "status_download", "done", None); }
-            Err(e) => { let _ = db::update_status(&conn, &track_id, "status_download", "error", Some(e)); }
+        {
+            let conn = db.lock().unwrap_or_else(|e| e.into_inner());
+            match &dl_result {
+                Ok(_) => { let _ = db::update_status(&conn, &track_id, "status_download", "done", None); }
+                Err(e) => { let _ = db::update_status(&conn, &track_id, "status_download", "error", Some(e)); }
+            }
         }
-    }
-    match dl_result {
-        Ok(_) => emit(&app, &track_id, "download", "done", None),
-        Err(e) => { emit(&app, &track_id, "download", "error", Some(e)); return; }
+        match dl_result {
+            Ok(_) => emit(&app, &track_id, "download", "done", None),
+            Err(e) => { emit(&app, &track_id, "download", "error", Some(e)); return; }
+        }
     }
 
     // --- Stage 2: stems ---
-    if token.is_cancelled() { return; }
-    emit(&app, &track_id, "stems", "started", None);
-    let stems_result = tokio::task::spawn_blocking({
-        let source_wav = source_wav.clone();
-        let stems_dir = stems_dir.clone();
-        move || stems::separate(&source_wav, &stems_dir, &demucs_bin, &cache_dir)
-    })
-    .await
-    .unwrap_or_else(|e| Err(e.to_string()));
+    if matches!(start_stage, StartStage::Download | StartStage::Stems) {
+        if token.is_cancelled() { return; }
+        emit(&app, &track_id, "stems", "started", None);
+        let stems_result = tokio::task::spawn_blocking({
+            let source_wav = source_wav.clone();
+            let stems_dir = stems_dir.clone();
+            move || stems::separate(&source_wav, &stems_dir, &demucs_bin, &cache_dir)
+        })
+        .await
+        .unwrap_or_else(|e| Err(e.to_string()));
 
-    {
-        let conn = db.lock().unwrap_or_else(|e| e.into_inner());
-        match &stems_result {
-            Ok(_) => { let _ = db::update_status(&conn, &track_id, "status_stems", "done", None); }
-            Err(e) => { let _ = db::update_status(&conn, &track_id, "status_stems", "error", Some(e)); }
+        {
+            let conn = db.lock().unwrap_or_else(|e| e.into_inner());
+            match &stems_result {
+                Ok(_) => { let _ = db::update_status(&conn, &track_id, "status_stems", "done", None); }
+                Err(e) => { let _ = db::update_status(&conn, &track_id, "status_stems", "error", Some(e)); }
+            }
         }
-    }
-    match stems_result {
-        Ok(_) => emit(&app, &track_id, "stems", "done", None),
-        Err(e) => { emit(&app, &track_id, "stems", "error", Some(e)); return; }
+        match stems_result {
+            Ok(_) => emit(&app, &track_id, "stems", "done", None),
+            Err(e) => { emit(&app, &track_id, "stems", "error", Some(e)); return; }
+        }
     }
 
     // --- Stage 3: analysis ---

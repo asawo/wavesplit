@@ -119,6 +119,22 @@
 
   let deleteError = $state('')
 
+  let retryingId = $state(null)
+  let retryError = $state('')
+
+  async function retryTrack(track) {
+    retryingId = track.id
+    retryError = ''
+    try {
+      await invoke('retry_track', { id: track.id })
+      await refreshTracks()
+    } catch (e) {
+      retryError = String(e)
+    } finally {
+      retryingId = null
+    }
+  }
+
   async function deleteTrack(track) {
     const ok = await confirm(
       `"${track.title}" and all its stems will be permanently deleted.`,
@@ -219,6 +235,10 @@
     <p class="export-error">{exportError} <button class="dismiss-error" onclick={() => exportError = ''}>×</button></p>
   {/if}
 
+  {#if retryError}
+    <p class="export-error">{retryError} <button class="dismiss-error" onclick={() => retryError = ''}>×</button></p>
+  {/if}
+
   {#if tracks.length === 0}
     <p class="empty">No tracks yet. Add a YouTube URL or open a local file.</p>
   {/if}
@@ -274,6 +294,11 @@
             {/if}
             <button class="export-btn" onclick={() => exportStems(track)} disabled={exportingId === track.id}>
               {exportingId === track.id ? 'Exporting…' : '↓ Export stems'}
+            </button>
+          {/if}
+          {#if hasError(track)}
+            <button class="retry-btn" onclick={() => retryTrack(track)} disabled={retryingId === track.id}>
+              {retryingId === track.id ? 'Retrying…' : '↺ Retry'}
             </button>
           {/if}
           <button class="delete-btn" onclick={() => deleteTrack(track)} title="Delete track">✕</button>
@@ -490,6 +515,27 @@
   .open-btn:hover {
     border-color: var(--fg-muted);
     background: var(--bg-button-hover);
+  }
+
+  .retry-btn {
+    padding: 4px 10px;
+    border: 1px solid var(--color-error);
+    border-radius: 4px;
+    background: transparent;
+    color: var(--color-error);
+    font-size: 12px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .retry-btn:hover:not(:disabled) {
+    background: var(--color-error);
+    color: #fff;
+  }
+
+  .retry-btn:disabled {
+    opacity: 0.5;
+    cursor: default;
   }
 
   .delete-btn {
