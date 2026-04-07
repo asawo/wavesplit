@@ -14,6 +14,14 @@ use crate::setup;
 
 const EVENT: &str = "pipeline";
 
+/// Write the stage result to the DB: "done" on success, "error" + message on failure.
+fn commit_result(conn: &Connection, track_id: &str, field: &str, result: &Result<(), String>) {
+    match result {
+        Ok(_) => { let _ = db::update_status(conn, track_id, field, "done", None); }
+        Err(e) => { let _ = db::update_status(conn, track_id, field, "error", Some(e)); }
+    }
+}
+
 #[derive(Clone, serde::Serialize)]
 struct PipelineEvent<'a> {
     track_id: &'a str,
@@ -76,10 +84,7 @@ pub async fn run(
 
         {
             let conn = db.lock().unwrap_or_else(|e| e.into_inner());
-            match &dl_result {
-                Ok(_) => { let _ = db::update_status(&conn, &track_id, "status_download", "done", None); }
-                Err(e) => { let _ = db::update_status(&conn, &track_id, "status_download", "error", Some(e)); }
-            }
+            commit_result(&conn, &track_id, "status_download", &dl_result);
         }
         match dl_result {
             Ok(_) => emit(&app, &track_id, "download", "done", None),
@@ -101,10 +106,7 @@ pub async fn run(
 
         {
             let conn = db.lock().unwrap_or_else(|e| e.into_inner());
-            match &stems_result {
-                Ok(_) => { let _ = db::update_status(&conn, &track_id, "status_stems", "done", None); }
-                Err(e) => { let _ = db::update_status(&conn, &track_id, "status_stems", "error", Some(e)); }
-            }
+            commit_result(&conn, &track_id, "status_stems", &stems_result);
         }
         match stems_result {
             Ok(_) => emit(&app, &track_id, "stems", "done", None),
@@ -120,4 +122,53 @@ pub async fn run(
         let _ = db::update_status(&conn, &track_id, "status_analysis", "done", None);
     }
     emit(&app, &track_id, "analysis", "done", None);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    fn open_mem() -> Connection {
+        crate::db::open(Path::new(":memory:")).unwrap()
+    }
+
+    fn insert_pending(conn: &Connection, id: &str) {
+        crate::db::insert_track(conn, &crate::db::Track {
+            id: id.to_string(),
+            title: "t".to_string(),
+            source_type: "youtube".to_string(),
+            source_url: None,
+            source_path: None,
+            created_at: "2024-01-01T00:00:00Z".to_string(),
+            sort_order: 1,
+            duration_ms: None,
+            status_download: "pending".to_string(),
+            status_stems: "pending".to_string(),
+            status_analysis: "pending".to_string(),
+            error_message: None,
+            export_path: None,
+            artist: None,
+        }).unwrap();
+    }
+
+    #[test]
+    fn commit_result_ok_sets_done() {
+        let conn = open_mem();
+        insert_pending(&conn, "t1");
+        commit_result(&conn, "t1", "status_download", &Ok(()));
+        let track = crate::db::get_track(&conn, "t1").unwrap().unwrap();
+        assert_eq!(track.status_download, "done");
+        assert_eq!(track.error_message, None);
+    }
+
+    #[test]
+    fn commit_result_err_sets_error_and_message() {
+        let conn = open_mem();
+        insert_pending(&conn, "t2");
+        commit_result(&conn, "t2", "status_stems", &Err("demucs crashed".to_string()));
+        let track = crate::db::get_track(&conn, "t2").unwrap().unwrap();
+        assert_eq!(track.status_stems, "error");
+        assert_eq!(track.error_message.as_deref(), Some("demucs crashed"));
+    }
 }
