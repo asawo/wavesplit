@@ -4,6 +4,7 @@
   import { open as openDialog, confirm } from '@tauri-apps/plugin-dialog'
 
   import { onMount, onDestroy } from 'svelte'
+  import { fuzzy, SORT_FNS, isReady, hasError, statusLabel, progressPct } from './tracklist.helpers.js'
 
   let { tracks = $bindable([]), refresh = $bindable(null) } = $props()
 
@@ -13,26 +14,9 @@
   let filterQuery = $state('')
   let sortKey = $state('newest')
 
-  function fuzzy(query, target) {
-    query = query.toLowerCase()
-    target = target.toLowerCase()
-    let qi = 0
-    for (let i = 0; i < target.length && qi < query.length; i++) {
-      if (target[i] === query[qi]) qi++
-    }
-    return qi === query.length
-  }
-
   function matchesFilter(track) {
     if (!filterQuery) return true
     return fuzzy(filterQuery, track.title) || fuzzy(filterQuery, track.artist ?? '')
-  }
-
-  const SORT_FNS = {
-    newest: (a, b) => b.sort_order - a.sort_order,
-    oldest: (a, b) => a.sort_order - b.sort_order,
-    title:  (a, b) => a.title.localeCompare(b.title),
-    artist: (a, b) => (a.artist ?? '').localeCompare(b.artist ?? ''),
   }
 
   let displayTracks = $derived(
@@ -152,41 +136,6 @@
     }
   }
 
-  function statusLabel(track) {
-    const p = progress[track.id]
-    if (p) {
-      if (p.status === 'error') return `Error: ${p.message ?? p.stage}`
-      if (p.status === 'started') return stageLabel(p.stage)
-      if (p.status === 'done' && p.stage !== 'analysis') return stageLabel(nextStage(p.stage))
-    }
-    if (track.status_analysis === 'done') return 'Ready'
-    if (track.status_stems === 'error' || track.status_download === 'error' || track.status_analysis === 'error') {
-      return `Error (${track.error_message ?? 'unknown'})`
-    }
-    if (track.status_analysis === 'pending' && track.status_stems === 'pending' && track.status_download === 'pending') {
-      return 'Queued'
-    }
-    return 'Processing'
-  }
-
-  function stageLabel(stage) {
-    return { download: 'Downloading…', stems: 'Separating stems…', analysis: 'Analyzing…' }[stage] ?? stage
-  }
-
-  function nextStage(stage) {
-    return { download: 'stems', stems: 'analysis' }[stage]
-  }
-
-  function isReady(track) {
-    return track.status_analysis === 'done'
-  }
-
-  function hasError(track) {
-    const p = progress[track.id]
-    if (p?.status === 'error') return true
-    return track.status_download === 'error' || track.status_stems === 'error' || track.status_analysis === 'error'
-  }
-
   async function openFolder(path) {
     try {
       await invoke('open_folder', { path })
@@ -196,17 +145,7 @@
   }
 
   function isProcessing(track) {
-    return !isReady(track) && !hasError(track)
-  }
-
-  const STAGE_PROGRESS = { download: 15, stems: 50, analysis: 85 }
-
-  function progressPct(track) {
-    if (isReady(track)) return 100
-    const p = progress[track.id]
-    if (!p) return 0
-    const base = STAGE_PROGRESS[p.stage] ?? 0
-    return p.status === 'done' ? base + 15 : base
+    return !isReady(track) && !hasError(track, progress)
   }
 </script>
 
@@ -244,7 +183,7 @@
   {/if}
 
   {#each displayTracks as track (track.id)}
-    <div class="track" class:ready={isReady(track)} class:error={hasError(track)} class:pending={track.id === PENDING_ID}>
+    <div class="track" class:ready={isReady(track)} class:error={hasError(track, progress)} class:pending={track.id === PENDING_ID}>
       <div class="track-info">
         {#if track.id === PENDING_ID}
           <span class="title">{track.title}</span>
@@ -273,11 +212,11 @@
         {/if}
         {#if track.id !== PENDING_ID}
           <span class="status" class:processing={isProcessing(track)} class:ready={isReady(track)}>
-            {statusLabel(track)}
+            {statusLabel(track, progress)}
           </span>
           {#if isProcessing(track)}
             <div class="progress-bar">
-              <div class="progress-fill" style="width: {progressPct(track)}%"></div>
+              <div class="progress-fill" style="width: {progressPct(track, progress)}%"></div>
             </div>
           {/if}
         {/if}
@@ -296,7 +235,7 @@
               {exportingId === track.id ? 'Exporting…' : '↓ Export stems'}
             </button>
           {/if}
-          {#if hasError(track)}
+          {#if hasError(track, progress)}
             <button class="retry-btn" onclick={() => retryTrack(track)} disabled={retryingId === track.id}>
               {retryingId === track.id ? 'Retrying…' : '↺ Retry'}
             </button>

@@ -174,3 +174,131 @@ pub fn next_sort_order(conn: &Connection) -> Result<i64> {
     )?;
     Ok(max.unwrap_or(0) + 1)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    fn open_mem() -> Connection {
+        open(Path::new(":memory:")).unwrap()
+    }
+
+    fn sample_track(id: &str) -> Track {
+        Track {
+            id: id.to_string(),
+            title: "Test Track".to_string(),
+            source_type: "youtube".to_string(),
+            source_url: Some("https://example.com".to_string()),
+            source_path: None,
+            created_at: "2024-01-01T00:00:00Z".to_string(),
+            sort_order: 1,
+            duration_ms: None,
+            status_download: "pending".to_string(),
+            status_stems: "pending".to_string(),
+            status_analysis: "pending".to_string(),
+            error_message: None,
+            export_path: None,
+            artist: None,
+        }
+    }
+
+    #[test]
+    fn insert_and_list_round_trips() {
+        let conn = open_mem();
+        insert_track(&conn, &sample_track("t1")).unwrap();
+        let tracks = list_tracks(&conn).unwrap();
+        assert_eq!(tracks.len(), 1);
+        assert_eq!(tracks[0].id, "t1");
+        assert_eq!(tracks[0].title, "Test Track");
+    }
+
+    #[test]
+    fn update_status_sets_done() {
+        let conn = open_mem();
+        insert_track(&conn, &sample_track("t2")).unwrap();
+        update_status(&conn, "t2", "status_download", "done", None).unwrap();
+        let track = get_track(&conn, "t2").unwrap().unwrap();
+        assert_eq!(track.status_download, "done");
+        assert_eq!(track.error_message, None);
+    }
+
+    #[test]
+    fn update_status_stores_error_message() {
+        let conn = open_mem();
+        insert_track(&conn, &sample_track("t3")).unwrap();
+        update_status(&conn, "t3", "status_download", "error", Some("network failure")).unwrap();
+        let track = get_track(&conn, "t3").unwrap().unwrap();
+        assert_eq!(track.status_download, "error");
+        assert_eq!(track.error_message.as_deref(), Some("network failure"));
+    }
+
+    #[test]
+    fn mark_interrupted_resets_pending_stages_to_error() {
+        let conn = open_mem();
+        let mut track = sample_track("t4");
+        track.status_download = "done".to_string();
+        insert_track(&conn, &track).unwrap();
+        mark_interrupted(&conn).unwrap();
+        let track = get_track(&conn, "t4").unwrap().unwrap();
+        assert_eq!(track.status_download, "done"); // already done — unchanged
+        assert_eq!(track.status_stems, "error");
+        assert_eq!(track.status_analysis, "error");
+        assert_eq!(track.error_message.as_deref(), Some("interrupted"));
+    }
+
+    #[test]
+    fn mark_interrupted_ignores_finished_tracks() {
+        let conn = open_mem();
+        let mut track = sample_track("t5");
+        track.status_download = "done".to_string();
+        track.status_stems = "done".to_string();
+        track.status_analysis = "done".to_string();
+        insert_track(&conn, &track).unwrap();
+        mark_interrupted(&conn).unwrap();
+        let track = get_track(&conn, "t5").unwrap().unwrap();
+        assert_eq!(track.status_analysis, "done");
+        assert_eq!(track.error_message, None);
+    }
+
+    #[test]
+    fn next_sort_order_increments() {
+        let conn = open_mem();
+        assert_eq!(next_sort_order(&conn).unwrap(), 1);
+        let mut track = sample_track("t6");
+        track.sort_order = 1;
+        insert_track(&conn, &track).unwrap();
+        assert_eq!(next_sort_order(&conn).unwrap(), 2);
+    }
+
+    #[test]
+    fn reset_for_retry_from_download_resets_all() {
+        let conn = open_mem();
+        let mut track = sample_track("t7");
+        track.status_download = "error".to_string();
+        track.error_message = Some("failed".to_string());
+        insert_track(&conn, &track).unwrap();
+        reset_for_retry(&conn, "t7", true, true).unwrap();
+        let track = get_track(&conn, "t7").unwrap().unwrap();
+        assert_eq!(track.status_download, "pending");
+        assert_eq!(track.status_stems, "pending");
+        assert_eq!(track.status_analysis, "pending");
+        assert_eq!(track.error_message, None);
+    }
+
+    #[test]
+    fn reset_for_retry_from_stems_preserves_download() {
+        let conn = open_mem();
+        let mut track = sample_track("t8");
+        track.status_download = "done".to_string();
+        track.status_stems = "error".to_string();
+        track.error_message = Some("demucs failed".to_string());
+        insert_track(&conn, &track).unwrap();
+        reset_for_retry(&conn, "t8", false, true).unwrap();
+        let track = get_track(&conn, "t8").unwrap().unwrap();
+        assert_eq!(track.status_download, "done");
+        assert_eq!(track.status_stems, "pending");
+        assert_eq!(track.status_analysis, "pending");
+        assert_eq!(track.error_message, None);
+    }
+}
