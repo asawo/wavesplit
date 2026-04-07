@@ -81,7 +81,7 @@ async fn add_track(
     let tasks = Arc::clone(&state.tasks);
     let track_id = id.clone();
     tokio::spawn(async move {
-        pipeline::run(track_id.clone(), source, db, data_dir, demucs_dir, token, app).await;
+        pipeline::run(track_id.clone(), source, db, data_dir, demucs_dir, token, app, pipeline::StartStage::Download).await;
         if let Ok(mut tasks) = tasks.lock() {
             tasks.remove(&track_id);
         }
@@ -142,4 +142,66 @@ pub fn open_folder(path: String) -> Result<(), String> {
     }
     let canonical = p.canonicalize().map_err(|e| e.to_string())?;
     tauri_plugin_opener::open_path(canonical, None::<&str>).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn retry_track(
+    id: String,
+    app: AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+    // Don't retry if already running
+    if state.tasks.lock().map_err(|_| "tasks unavailable".to_string())?.contains_key(&id) {
+        return Err("track is already processing".to_string());
+    }
+
+    let track = {
+        let conn = state.db.lock().map_err(|_| "database unavailable".to_string())?;
+        db::get_track(&conn, &id)
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| "track not found".to_string())?
+    };
+
+    let (start_stage, reset_download, reset_stems) = if track.status_download != "done" {
+        (pipeline::StartStage::Download, true, true)
+    } else if track.status_stems != "done" {
+        (pipeline::StartStage::Stems, false, true)
+    } else {
+        (pipeline::StartStage::Analysis, false, false)
+    };
+
+    {
+        let conn = state.db.lock().map_err(|_| "database unavailable".to_string())?;
+        db::reset_for_retry(&conn, &id, reset_download, reset_stems).map_err(|e| e.to_string())?;
+    }
+
+    let source = match track.source_type.as_str() {
+        "youtube" => {
+            let url = track.source_url.ok_or_else(|| "missing source URL".to_string())?;
+            pipeline::Source::Youtube(url)
+        }
+        _ => {
+            let path = track.source_path.ok_or_else(|| "missing source path".to_string())?;
+            pipeline::Source::Local(std::path::PathBuf::from(path))
+        }
+    };
+
+    let token = CancellationToken::new();
+    {
+        let mut tasks = state.tasks.lock().map_err(|_| "tasks unavailable".to_string())?;
+        tasks.insert(id.clone(), token.clone());
+    }
+    let db = Arc::clone(&state.db);
+    let data_dir = state.data_dir.clone();
+    let demucs_dir = state.demucs_dir.clone();
+    let tasks = Arc::clone(&state.tasks);
+    let track_id = id.clone();
+    tokio::spawn(async move {
+        pipeline::run(track_id.clone(), source, db, data_dir, demucs_dir, token, app, start_stage).await;
+        if let Ok(mut tasks) = tasks.lock() {
+            tasks.remove(&track_id);
+        }
+    });
+
+    Ok(())
 }

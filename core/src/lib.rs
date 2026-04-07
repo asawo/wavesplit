@@ -70,10 +70,7 @@ pub fn run() {
             let db_path = data_dir.join("wavesplit.db");
             let conn = db::open(&db_path)?;
 
-            let incomplete = db::incomplete_tracks(&conn).unwrap_or_default();
-            if !incomplete.is_empty() {
-                eprintln!("[wavesplit] {} track(s) have incomplete pipeline state", incomplete.len());
-            }
+            db::mark_interrupted(&conn).unwrap_or_default();
 
             app.manage(AppState {
                 db: Arc::new(Mutex::new(conn)),
@@ -94,6 +91,7 @@ pub fn run() {
             commands::export_stems,
             commands::update_track_meta,
             commands::open_folder,
+            commands::retry_track,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

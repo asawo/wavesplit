@@ -105,14 +105,27 @@ pub fn delete_track(conn: &Connection, id: &str) -> Result<()> {
     Ok(())
 }
 
-pub fn incomplete_tracks(conn: &Connection) -> Result<Vec<Track>> {
+/// On startup: reset any track with a pending stage to error so the UI can offer retry.
+pub fn mark_interrupted(conn: &Connection) -> Result<()> {
+    conn.execute(
+        "UPDATE tracks
+         SET status_download = CASE WHEN status_download = 'pending' THEN 'error' ELSE status_download END,
+             status_stems    = CASE WHEN status_stems    = 'pending' THEN 'error' ELSE status_stems    END,
+             status_analysis = CASE WHEN status_analysis = 'pending' THEN 'error' ELSE status_analysis END,
+             error_message   = 'interrupted'
+         WHERE status_download = 'pending' OR status_stems = 'pending' OR status_analysis = 'pending'",
+        [],
+    )?;
+    Ok(())
+}
+
+pub fn get_track(conn: &Connection, id: &str) -> Result<Option<Track>> {
     let mut stmt = conn.prepare(
         "SELECT id, title, source_type, source_url, source_path, created_at, sort_order, duration_ms,
                 status_download, status_stems, status_analysis, error_message, export_path, artist
-         FROM tracks WHERE status_stems != 'done' OR status_analysis != 'done'
-         ORDER BY sort_order ASC",
+         FROM tracks WHERE id = ?1",
     )?;
-    let tracks = stmt.query_map([], |row| {
+    let mut rows = stmt.query_map(params![id], |row| {
         Ok(Track {
             id: row.get(0)?,
             title: row.get(1)?,
@@ -129,9 +142,28 @@ pub fn incomplete_tracks(conn: &Connection) -> Result<Vec<Track>> {
             export_path: row.get(12)?,
             artist: row.get(13)?,
         })
-    })?
-    .collect::<Result<Vec<_>>>()?;
-    Ok(tracks)
+    })?;
+    rows.next().transpose()
+}
+
+pub fn reset_for_retry(conn: &Connection, id: &str, reset_download: bool, reset_stems: bool) -> Result<()> {
+    if reset_download {
+        conn.execute(
+            "UPDATE tracks SET status_download = 'pending', status_stems = 'pending', status_analysis = 'pending', error_message = NULL WHERE id = ?1",
+            params![id],
+        )?;
+    } else if reset_stems {
+        conn.execute(
+            "UPDATE tracks SET status_stems = 'pending', status_analysis = 'pending', error_message = NULL WHERE id = ?1",
+            params![id],
+        )?;
+    } else {
+        conn.execute(
+            "UPDATE tracks SET status_analysis = 'pending', error_message = NULL WHERE id = ?1",
+            params![id],
+        )?;
+    }
+    Ok(())
 }
 
 pub fn next_sort_order(conn: &Connection) -> Result<i64> {
