@@ -287,6 +287,51 @@ mod tests {
     }
 
     #[test]
+    fn get_track_returns_none_for_missing_id() {
+        let conn = open_mem();
+        assert!(get_track(&conn, "nonexistent").unwrap().is_none());
+    }
+
+    #[test]
+    fn update_track_meta_changes_title_and_artist() {
+        let conn = open_mem();
+        insert_track(&conn, &sample_track("t9")).unwrap();
+        update_track_meta(&conn, "t9", "New Title", Some("New Artist")).unwrap();
+        let track = get_track(&conn, "t9").unwrap().unwrap();
+        assert_eq!(track.title, "New Title");
+        assert_eq!(track.artist.as_deref(), Some("New Artist"));
+    }
+
+    #[test]
+    fn update_track_meta_clears_artist_when_none() {
+        let conn = open_mem();
+        let mut track = sample_track("t10");
+        track.artist = Some("Old Artist".to_string());
+        insert_track(&conn, &track).unwrap();
+        update_track_meta(&conn, "t10", "Title", None).unwrap();
+        let track = get_track(&conn, "t10").unwrap().unwrap();
+        assert_eq!(track.artist, None);
+    }
+
+    #[test]
+    fn set_export_path_stores_path() {
+        let conn = open_mem();
+        insert_track(&conn, &sample_track("t11")).unwrap();
+        set_export_path(&conn, "t11", "/exports/t11").unwrap();
+        let track = get_track(&conn, "t11").unwrap().unwrap();
+        assert_eq!(track.export_path.as_deref(), Some("/exports/t11"));
+    }
+
+    #[test]
+    fn delete_track_removes_row() {
+        let conn = open_mem();
+        insert_track(&conn, &sample_track("t12")).unwrap();
+        assert!(get_track(&conn, "t12").unwrap().is_some());
+        delete_track(&conn, "t12").unwrap();
+        assert!(get_track(&conn, "t12").unwrap().is_none());
+    }
+
+    #[test]
     fn reset_for_retry_from_stems_preserves_download() {
         let conn = open_mem();
         let mut track = sample_track("t8");
