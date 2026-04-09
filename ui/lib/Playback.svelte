@@ -105,11 +105,13 @@
 
   function applyGains() {
     for (const stem of STEMS) {
-      const node = gainNodes[stem.key]
-      if (!node) continue
+      // Read reactive state first so $effect always tracks these as dependencies,
+      // even before gain nodes are created (early-return would skip the reads).
       const s = stemState[stem.key]
       const muted = anySoloed ? !s.soloed : s.muted
       const target = muted ? 0 : s.volume
+      const node = gainNodes[stem.key]
+      if (!node) continue
       if (audioCtx) {
         node.gain.setTargetAtTime(target, audioCtx.currentTime, 0.015)
       } else {
