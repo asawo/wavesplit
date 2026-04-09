@@ -92,6 +92,7 @@ pub fn run() {
             commands::update_track_meta,
             commands::open_folder,
             commands::retry_track,
+            commands::get_stem_paths,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -1,6 +1,7 @@
 <script>
-  import { invoke } from '@tauri-apps/api/core'
+  import { invoke, convertFileSrc } from '@tauri-apps/api/core'
   import { open as openDialog } from '@tauri-apps/plugin-dialog'
+  import { onMount, onDestroy } from 'svelte'
 
   let { track, active, onBack } = $props()
 
@@ -11,13 +12,11 @@
     { key: 'other',  label: 'Other',  color: '#e06080' },
   ]
 
+  // ── Transport ──────────────────────────────────────────────
   let playing = $state(false)
-  let playhead = $state(0)
+  let playhead = $state(0)   // 0–1 fraction
 
-  $effect(() => {
-    if (!active) playing = false
-  })
-
+  // ── Stem mixer ─────────────────────────────────────────────
   let stemState = $state(
     Object.fromEntries(STEMS.map(s => [s.key, { muted: false, soloed: false, volume: 1 }]))
   )
@@ -28,21 +27,41 @@
 
   function toggleSolo(key) {
     const wasSoloed = stemState[key].soloed
-    for (const k of Object.keys(stemState)) {
-      stemState[k] = { ...stemState[k], soloed: false }
-    }
-    if (!wasSoloed) {
-      stemState[key] = { ...stemState[key], soloed: true }
-    }
+    for (const k of Object.keys(stemState)) stemState[k] = { ...stemState[k], soloed: false }
+    if (!wasSoloed) stemState[key] = { ...stemState[key], soloed: true }
   }
 
   let anySoloed = $derived(Object.values(stemState).some(s => s.soloed))
 
   function isMuted(key) {
-    if (anySoloed) return !stemState[key].soloed
-    return stemState[key].muted
+    return anySoloed ? !stemState[key].soloed : stemState[key].muted
   }
 
+  // ── Audio engine ───────────────────────────────────────────
+  let audioCtx = null
+  let gainNodes = {}       // key → GainNode
+  let sourceNodes = {}     // key → AudioBufferSourceNode (live while playing)
+  let buffers = $state({}) // key → AudioBuffer
+  let waveformData = $state({}) // key → number[120] (RMS, 0–1 normalised)
+  let loading = $state(false)
+  let loadError = $state(null)
+  let duration = $state(0) // seconds (from decoded audio)
+  let startOffset = 0      // track pos (s) where last play() started from
+  let startTime = 0        // audioCtx.currentTime when last play() started
+  let rafId = null
+  let loadedTrackId = null
+
+  // Time display — prefer real decoded duration, fall back to DB
+  let displayDuration = $derived(duration > 0 ? duration : (track.duration_ms ?? 0) / 1000)
+  let elapsedSeconds = $derived(playhead * displayDuration)
+
+  function formatTime(s) {
+    if (!s && s !== 0) return '--:--'
+    s = Math.floor(s)
+    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
+  }
+
+  // Deterministic fallback waveform while loading
   function hashStr(str) {
     let h = 0
     for (const c of str) h = (Math.imul(31, h) + c.charCodeAt(0)) | 0
@@ -57,17 +76,211 @@
     })
   }
 
-  function formatTime(ms) {
-    if (!ms && ms !== 0) return '--:--'
-    const s = Math.floor(ms / 1000)
-    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
+  function extractWaveform(audioBuffer, numPoints) {
+    const channel = audioBuffer.getChannelData(0)
+    const blockSize = Math.floor(channel.length / numPoints)
+    const result = new Array(numPoints)
+    for (let i = 0; i < numPoints; i++) {
+      const start = i * blockSize
+      let sum = 0
+      for (let j = start; j < Math.min(start + blockSize, channel.length); j++) {
+        sum += channel[j] * channel[j]
+      }
+      result[i] = Math.sqrt(sum / Math.max(blockSize, 1))
+    }
+    const max = Math.max(...result, 0.001)
+    return result.map(v => v / max)
   }
 
-  function seekTo(e) {
+  // Master waveform = RMS average of all loaded stems
+  let masterWaveform = $derived((() => {
+    const loaded = STEMS.map(s => waveformData[s.key]).filter(Boolean)
+    if (!loaded.length) return null
+    const avg = new Array(120).fill(0)
+    for (const w of loaded) {
+      for (let i = 0; i < 120; i++) avg[i] += w[i] / loaded.length
+    }
+    return avg
+  })())
+
+  function applyGains() {
+    for (const stem of STEMS) {
+      const node = gainNodes[stem.key]
+      if (!node) continue
+      const s = stemState[stem.key]
+      const muted = anySoloed ? !s.soloed : s.muted
+      const target = muted ? 0 : s.volume
+      if (audioCtx) {
+        node.gain.setTargetAtTime(target, audioCtx.currentTime, 0.015)
+      } else {
+        node.gain.value = target
+      }
+    }
+  }
+
+  async function loadAudio() {
+    if (loadedTrackId === track.id) return
+    loadedTrackId = track.id
+
+    loading = true
+    loadError = null
+    playing = false
+    startOffset = 0
+    playhead = 0
+    buffers = {}
+    waveformData = {}
+
+    try {
+      if (!audioCtx) {
+        audioCtx = new AudioContext()
+        for (const stem of STEMS) {
+          gainNodes[stem.key] = audioCtx.createGain()
+          gainNodes[stem.key].connect(audioCtx.destination)
+        }
+        applyGains()
+      }
+
+      const paths = await invoke('get_stem_paths', { trackId: track.id })
+
+      const results = await Promise.all(STEMS.map(async ({ key }) => {
+        const url = convertFileSrc(paths[key])
+        const resp = await fetch(url)
+        if (!resp.ok) throw new Error(`HTTP ${resp.status} for ${key}`)
+        const ab = await resp.arrayBuffer()
+        const buf = await audioCtx.decodeAudioData(ab)
+        return [key, buf]
+      }))
+
+      const newBuffers = Object.fromEntries(results)
+      buffers = newBuffers
+      waveformData = Object.fromEntries(
+        results.map(([key, buf]) => [key, extractWaveform(buf, 120)])
+      )
+      duration = Object.values(newBuffers)[0]?.duration ?? 0
+
+    } catch (e) {
+      loadError = e.message ?? String(e)
+      loadedTrackId = null  // allow retry on next open
+    } finally {
+      loading = false
+    }
+  }
+
+  // ── Playback control ───────────────────────────────────────
+
+  function startPlayback() {
+    if (!audioCtx || Object.keys(buffers).length === 0) return
+    const offset = Math.max(0, Math.min(startOffset, duration - 0.01))
+    startTime = audioCtx.currentTime
+    for (const { key } of STEMS) {
+      const buf = buffers[key]
+      if (!buf) continue
+      const src = audioCtx.createBufferSource()
+      src.buffer = buf
+      src.connect(gainNodes[key])
+      src.start(0, offset)
+      sourceNodes[key] = src
+    }
+    schedTick()
+  }
+
+  function stopSources() {
+    for (const src of Object.values(sourceNodes)) {
+      try { src.stop() } catch (_) {}
+      try { src.disconnect() } catch (_) {}
+    }
+    sourceNodes = {}
+  }
+
+  function pausePlayback() {
+    if (audioCtx && Object.keys(sourceNodes).length > 0) {
+      startOffset = Math.min(startOffset + (audioCtx.currentTime - startTime), duration)
+    }
+    stopSources()
+    cancelTick()
+  }
+
+  async function handlePlayPause() {
+    if (!audioCtx || Object.keys(buffers).length === 0) return
+    if (playing) {
+      pausePlayback()
+      playing = false
+    } else {
+      if (audioCtx.state === 'suspended') await audioCtx.resume()
+      startPlayback()
+      playing = true
+    }
+  }
+
+  async function seek(fraction) {
+    const safeFraction = Math.max(0, Math.min(1, fraction))
+    const was = playing
+    if (was) { stopSources(); cancelTick(); playing = false }
+    startOffset = safeFraction * duration
+    playhead = safeFraction
+    if (was) {
+      if (audioCtx?.state === 'suspended') await audioCtx.resume()
+      startPlayback()
+      playing = true
+    }
+  }
+
+  function seekToClick(e) {
     const rect = e.currentTarget.getBoundingClientRect()
-    playhead = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
+    seek((e.clientX - rect.left) / rect.width)
   }
 
+  function getCurrentPos() {
+    if (!playing || !audioCtx) return startOffset
+    return startOffset + (audioCtx.currentTime - startTime)
+  }
+
+  function skipBy(seconds) {
+    seek((getCurrentPos() + seconds) / Math.max(duration, 0.001))
+  }
+
+  function schedTick() {
+    cancelTick()
+    rafId = requestAnimationFrame(tick)
+  }
+
+  function cancelTick() {
+    if (rafId) { cancelAnimationFrame(rafId); rafId = null }
+  }
+
+  function tick() {
+    if (!playing || !audioCtx) return
+    const pos = startOffset + (audioCtx.currentTime - startTime)
+    if (pos >= duration) {
+      stopSources()
+      playing = false
+      startOffset = 0
+      playhead = 0
+      return
+    }
+    playhead = pos / duration
+    rafId = requestAnimationFrame(tick)
+  }
+
+  // Sync gain nodes whenever stem state or solo changes
+  $effect(() => {
+    applyGains()
+  })
+
+  // Pause when navigating back to library
+  $effect(() => {
+    if (!active && playing) { pausePlayback(); playing = false }
+  })
+
+  onMount(() => { loadAudio() })
+
+  onDestroy(() => {
+    cancelTick()
+    stopSources()
+    audioCtx?.close()
+  })
+
+  // ── Export ─────────────────────────────────────────────────
   let exportingId = $state(null)
   let exportError = $state('')
 
@@ -87,6 +300,7 @@
 </script>
 
 <div class="playback">
+  <!-- ── Header ── -->
   <header class="playback-header">
     <button class="back-btn" onclick={onBack}>‹ Library</button>
     <div class="track-meta">
@@ -96,20 +310,19 @@
     <div class="header-spacer"></div>
   </header>
 
+  <!-- ── Master waveform ── -->
   <div class="master-section">
     <p class="section-label">Master</p>
     <div class="master-panel">
       <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions a11y_no_noninteractive_element_interactions -->
-      <div class="waveform-wrap" role="presentation" onclick={seekTo}>
+      <div class="waveform-wrap" role="presentation" onclick={seekToClick}
+           style="opacity:{loading ? 0.4 : 1}; transition:opacity 0.3s">
         <svg class="waveform" viewBox="0 0 400 60" preserveAspectRatio="none">
-          {#each makeWaveformBars(track.id, 120) as h, i}
+          {#each (masterWaveform ?? makeWaveformBars(track.id, 120)) as h, i}
             {@const x = i * (400 / 120)}
             {@const bh = h * 54}
-            <rect
-              x={x} y={(60 - bh) / 2}
-              width="2.2" height={bh} rx="1"
-              fill={(i / 120) < playhead ? '#4caf72' : '#383838'}
-            />
+            <rect x={x} y={(60 - bh) / 2} width="2.2" height={bh} rx="1"
+                  fill={(i / 120) < playhead ? '#4caf72' : '#383838'} />
           {/each}
         </svg>
         <div class="playhead" style="left:{playhead * 100}%">
@@ -117,71 +330,69 @@
         </div>
       </div>
       <div class="time-row">
-        <span>{formatTime(playhead * (track.duration_ms ?? 0))}</span>
-        <span>{formatTime(track.duration_ms)}</span>
+        <span>{formatTime(elapsedSeconds)}</span>
+        <span>{formatTime(displayDuration)}</span>
       </div>
     </div>
   </div>
 
+  <!-- ── Transport ── -->
   <div class="transport">
-    <button class="transport-btn" title="Skip to start" onclick={() => playhead = 0}>‹</button>
-    <button class="transport-btn" title="Rewind">‹‹</button>
-    <button class="transport-btn play-btn" title={playing ? 'Pause' : 'Play'} onclick={() => playing = !playing}>
+    <button class="transport-btn" title="Skip to start" onclick={() => seek(0)}>‹</button>
+    <button class="transport-btn" title="Rewind 10s"    onclick={() => skipBy(-10)}>‹‹</button>
+    <button class="transport-btn play-btn"
+            title={playing ? 'Pause' : 'Play'}
+            disabled={loading || !!loadError}
+            onclick={handlePlayPause}>
       {playing ? '⏸' : '▶'}
     </button>
-    <button class="transport-btn" title="Fast forward">››</button>
-    <button class="transport-btn" title="Skip to end" onclick={() => playhead = 1}>›</button>
+    <button class="transport-btn" title="Forward 10s"  onclick={() => skipBy(10)}>››</button>
+    <button class="transport-btn" title="Skip to end"  onclick={() => seek(1)}>›</button>
   </div>
 
+  <!-- ── Stems ── -->
   <div class="stems-section">
     <p class="section-label">Stems</p>
+
+    {#if loadError}
+      <p class="load-error">Failed to load audio: {loadError}</p>
+    {/if}
+
     {#each STEMS as stem}
       {@const state = stemState[stem.key]}
       {@const muted = isMuted(stem.key)}
       <div class="stem-row">
         <span class="stem-label" style="color:{muted ? 'var(--fg-muted)' : stem.color}">{stem.label}</span>
-        <div class="stem-waveform-wrap">
+        <div class="stem-waveform-wrap" style="opacity:{loading ? 0.35 : 1}; transition:opacity 0.3s">
           <svg class="stem-waveform" viewBox="0 0 400 28" preserveAspectRatio="none">
-            {#each makeWaveformBars(track.id + stem.key, 120) as h, i}
+            {#each (waveformData[stem.key] ?? makeWaveformBars(track.id + stem.key, 120)) as h, i}
               {@const x = i * (400 / 120)}
               {@const bh = h * 24}
-              <rect
-                x={x} y={(28 - bh) / 2}
-                width="2.2" height={bh} rx="0.5"
-                fill={muted ? '#2e2e2e' : ((i / 120) < playhead ? stem.color : '#383838')}
-                opacity={muted ? 0.5 : 1}
-              />
+              <rect x={x} y={(28 - bh) / 2} width="2.2" height={bh} rx="0.5"
+                    fill={muted ? '#2e2e2e' : ((i / 120) < playhead ? stem.color : '#383838')}
+                    opacity={muted ? 0.5 : 1} />
             {/each}
           </svg>
           <div class="stem-playhead" style="left:{playhead * 100}%"></div>
         </div>
-        <button
-          class="stem-btn"
-          class:active={state.muted && !anySoloed}
-          onclick={() => toggleMute(stem.key)}
-          title="Mute"
-        >M</button>
-        <button
-          class="stem-btn"
-          class:active={state.soloed}
-          onclick={() => toggleSolo(stem.key)}
-          title="Solo"
-        >S</button>
-        <input
-          class="vol-slider"
-          type="range"
-          min="0" max="1" step="0.01"
-          value={state.volume}
-          style="accent-color:{stem.color}"
-          oninput={(e) => stemState[stem.key] = { ...state, volume: +e.target.value }}
-        />
+        <button class="stem-btn" class:active={state.muted && !anySoloed}
+                onclick={() => toggleMute(stem.key)} title="Mute">M</button>
+        <button class="stem-btn" class:active={state.soloed}
+                onclick={() => toggleSolo(stem.key)} title="Solo">S</button>
+        <input class="vol-slider" type="range" min="0" max="1" step="0.01"
+               value={state.volume}
+               style="accent-color:{stem.color}"
+               oninput={(e) => stemState[stem.key] = { ...state, volume: +e.target.value }} />
       </div>
     {/each}
   </div>
 
+  <!-- ── Footer ── -->
   <div class="playback-footer">
     {#if exportError}
-      <span class="export-error">{exportError} <button class="dismiss-btn" onclick={() => exportError = ''}>×</button></span>
+      <span class="export-error">{exportError}
+        <button class="dismiss-btn" onclick={() => exportError = ''}>×</button>
+      </span>
     {/if}
     <button class="export-btn" onclick={exportStems} disabled={!!exportingId}>
       {exportingId ? 'Exporting…' : '↓ Export stems'}
@@ -252,9 +463,7 @@
     max-width: 260px;
   }
 
-  .header-spacer {
-    /* balances the back button */
-  }
+  .header-spacer { /* balances back button */ }
 
   /* ── Master waveform ── */
   .master-section {
@@ -349,9 +558,14 @@
     letter-spacing: -1px;
   }
 
-  .transport-btn:hover {
+  .transport-btn:hover:not(:disabled) {
     background: var(--bg-button-hover);
     border-color: var(--fg-muted);
+  }
+
+  .transport-btn:disabled {
+    opacity: 0.35;
+    cursor: default;
   }
 
   .play-btn {
@@ -373,6 +587,12 @@
   .stems-section .section-label {
     margin-bottom: 4px;
     flex-shrink: 0;
+  }
+
+  .load-error {
+    font-size: 12px;
+    color: var(--color-error);
+    margin: 0 0 8px;
   }
 
   .stem-row {

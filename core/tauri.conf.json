@@ -19,7 +19,11 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src ipc: http://ipc.localhost"
+      "assetProtocol": {
+        "enable": true,
+        "scope": ["$APPDATA/**"]
+      },
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src ipc: http://ipc.localhost asset: http://asset.localhost; media-src asset: http://asset.localhost"
     }
   },
   "bundle": {
