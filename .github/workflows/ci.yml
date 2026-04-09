@@ -1,48 +1,18 @@
-name: CI
+name: CI (Rust)
 
 on:
   push:
     branches: [main]
     paths:
       - 'core/**'
-      - 'ui/**'
-      - 'package.json'
-      - 'pnpm-lock.yaml'
       - '.github/workflows/ci.yml'
   pull_request:
     branches: [main]
     paths:
       - 'core/**'
-      - 'ui/**'
-      - 'package.json'
-      - 'pnpm-lock.yaml'
       - '.github/workflows/ci.yml'
 
 jobs:
-  frontend:
-    runs-on: ubuntu-22.04
-
-    steps:
-      - uses: actions/checkout@v5
-
-      - uses: pnpm/action-setup@v5
-        with:
-          version: 8
-
-      - uses: actions/setup-node@v5
-        with:
-          node-version: 24
-          cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Build
-        run: pnpm build
-
-      - name: Test
-        run: pnpm test
-
   rust:
     runs-on: ubuntu-22.04
 
