@@ -2,6 +2,7 @@
   import { invoke, convertFileSrc } from '@tauri-apps/api/core'
   import { open as openDialog } from '@tauri-apps/plugin-dialog'
   import { onDestroy } from 'svelte'
+  import { formatTime, hashStr, makeWaveformBars, extractWaveform } from './playback.helpers.js'
 
   let { track, active, onBack } = $props()
 
@@ -54,43 +55,6 @@
   // Time display — prefer real decoded duration, fall back to DB
   let displayDuration = $derived(duration > 0 ? duration : (track.duration_ms ?? 0) / 1000)
   let elapsedSeconds = $derived(playhead * displayDuration)
-
-  function formatTime(s) {
-    if (!s && s !== 0) return '--:--'
-    s = Math.floor(s)
-    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
-  }
-
-  // Deterministic fallback waveform while loading
-  function hashStr(str) {
-    let h = 0
-    for (const c of str) h = (Math.imul(31, h) + c.charCodeAt(0)) | 0
-    return h >>> 0
-  }
-
-  function makeWaveformBars(seed, count) {
-    let s = hashStr(seed)
-    return Array.from({ length: count }, () => {
-      s = (Math.imul(s, 1664525) + 1013904223) >>> 0
-      return 0.12 + (s / 0xFFFFFFFF) * 0.88
-    })
-  }
-
-  function extractWaveform(audioBuffer, numPoints) {
-    const channel = audioBuffer.getChannelData(0)
-    const blockSize = Math.floor(channel.length / numPoints)
-    const result = new Array(numPoints)
-    for (let i = 0; i < numPoints; i++) {
-      const start = i * blockSize
-      let sum = 0
-      for (let j = start; j < Math.min(start + blockSize, channel.length); j++) {
-        sum += channel[j] * channel[j]
-      }
-      result[i] = Math.sqrt(sum / Math.max(blockSize, 1))
-    }
-    const max = Math.max(...result, 0.001)
-    return result.map(v => v / max)
-  }
 
   // Master waveform = RMS average of all loaded stems
   let masterWaveform = $derived((() => {
