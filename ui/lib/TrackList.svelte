@@ -6,7 +6,7 @@
   import { onMount, onDestroy } from 'svelte'
   import { fuzzy, SORT_FNS, isReady, hasError, statusLabel, progressPct } from './tracklist.helpers.js'
 
-  let { tracks = $bindable([]), refresh = $bindable(null) } = $props()
+  let { tracks = $bindable([]), refresh = $bindable(null), onPlay } = $props()
 
   // pipeline events keyed by track id: { stage, status, message }
   let progress = $state({})
@@ -183,7 +183,18 @@
   {/if}
 
   {#each displayTracks as track (track.id)}
-    <div class="track" class:ready={isReady(track)} class:error={hasError(track, progress)} class:pending={track.id === PENDING_ID}>
+    <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+    <div
+      class="track"
+      class:ready={isReady(track)}
+      class:error={hasError(track, progress)}
+      class:pending={track.id === PENDING_ID}
+      class:playable={isReady(track) && !!onPlay}
+      role={isReady(track) && onPlay ? 'button' : undefined}
+      tabindex={isReady(track) && onPlay ? 0 : undefined}
+      onclick={() => { if (onPlay && isReady(track) && editingId !== track.id) onPlay(track) }}
+      onkeydown={(e) => { if (e.key === 'Enter' && onPlay && isReady(track) && editingId !== track.id) onPlay(track) }}
+    >
       <div class="track-info">
         {#if track.id === PENDING_ID}
           <span class="title">{track.title}</span>
@@ -203,10 +214,10 @@
             onkeydown={(e) => onEditKeydown(e, track)}
           />
         {:else}
-          <span class="title" onclick={() => startEdit(track)} onkeydown={(e) => e.key === 'Enter' && startEdit(track)} role="button" tabindex="0">
+          <span class="title" onclick={(e) => { e.stopPropagation(); startEdit(track) }} onkeydown={(e) => { e.stopPropagation(); e.key === 'Enter' && startEdit(track) }} role="button" tabindex="0">
             {track.title}
           </span>
-          <span class="artist" onclick={() => startEdit(track)} onkeydown={(e) => e.key === 'Enter' && startEdit(track)} role="button" tabindex="0">
+          <span class="artist" onclick={(e) => { e.stopPropagation(); startEdit(track) }} onkeydown={(e) => { e.stopPropagation(); e.key === 'Enter' && startEdit(track) }} role="button" tabindex="0">
             {track.artist ?? '—'}
           </span>
         {/if}
@@ -336,6 +347,14 @@
 
   .track.error {
     background: var(--bg-track-error);
+  }
+
+  .track.playable {
+    cursor: pointer;
+  }
+
+  .track.playable:hover {
+    background: #2a312a;
   }
 
   .track-info {

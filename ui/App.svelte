@@ -3,11 +3,15 @@
   import { onMount } from 'svelte'
   import AddTrack from './lib/AddTrack.svelte'
   import TrackList from './lib/TrackList.svelte'
+  import Playback from './lib/Playback.svelte'
   import Setup from './lib/Setup.svelte'
 
   let tracks = $state([])
   let refreshTracks = $state(null)
   let ready = $state(true)  // optimistic: assume available, overlay shows if not
+
+  let screen = $state('library')   // 'library' | 'playback'
+  let selectedTrack = $state(null)
 
   onMount(async () => {
     try {
@@ -40,24 +44,50 @@
   function handleAdded(_id) {
     refreshTracks?.()
   }
+
+  function openPlayback(track) {
+    selectedTrack = track
+    screen = 'playback'
+  }
+
+  function closePlayback() {
+    screen = 'library'
+    // keep selectedTrack alive so playhead position is preserved on return
+  }
 </script>
 
 <div class="app fade-in">
-  <header>
-    <h1>Wavesplit</h1>
-  </header>
+  <div class="screens-inner" class:show-playback={screen === 'playback'}>
 
-  <main>
-    <section class="add-section">
-      <p class="section-label">Add track</p>
-      <AddTrack onAdded={handleAdded} onStarted={handleStarted} />
-    </section>
+    <!-- Library screen -->
+    <div class="screen">
+      <header>
+        <h1>Wavesplit</h1>
+      </header>
+      <main>
+        <section class="add-section">
+          <p class="section-label">Add track</p>
+          <AddTrack onAdded={handleAdded} onStarted={handleStarted} />
+        </section>
+        <section class="list-section">
+          <p class="section-label">Library</p>
+          <TrackList bind:tracks bind:refresh={refreshTracks} onPlay={openPlayback} />
+        </section>
+      </main>
+    </div>
 
-    <section class="list-section">
-      <p class="section-label">Library</p>
-      <TrackList bind:tracks bind:refresh={refreshTracks} />
-    </section>
-  </main>
+    <!-- Playback screen -->
+    <div class="screen">
+      {#if selectedTrack}
+        <Playback
+          track={selectedTrack}
+          active={screen === 'playback'}
+          onBack={closePlayback}
+        />
+      {/if}
+    </div>
+
+  </div>
 </div>
 
 {#if !ready}
@@ -71,7 +101,7 @@
     box-sizing: border-box;
   }
 
-:global(:root) {
+  :global(:root) {
     --bg: #1a1a1a;
     --bg-panel: #202020;
     --bg-input: #2a2a2a;
@@ -108,9 +138,28 @@
   }
 
   .app {
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  .screens-inner {
+    display: flex;
+    width: 200%;
+    height: 100%;
+    transition: transform 0.2s ease-out;
+    will-change: transform;
+  }
+
+  .screens-inner.show-playback {
+    transform: translateX(-50%);
+  }
+
+  .screen {
+    width: 50%;
+    height: 100%;
+    overflow: hidden;
     display: flex;
     flex-direction: column;
-    height: 100vh;
   }
 
   header {
