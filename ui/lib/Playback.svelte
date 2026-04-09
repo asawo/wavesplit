@@ -1,7 +1,7 @@
 <script>
   import { invoke, convertFileSrc } from '@tauri-apps/api/core'
   import { open as openDialog } from '@tauri-apps/plugin-dialog'
-  import { onMount, onDestroy } from 'svelte'
+  import { onDestroy } from 'svelte'
 
   let { track, active, onBack } = $props()
 
@@ -119,8 +119,9 @@
   }
 
   async function loadAudio() {
-    if (loadedTrackId === track.id) return
-    loadedTrackId = track.id
+    const targetId = track.id
+    if (loadedTrackId === targetId) return
+    loadedTrackId = targetId
 
     loading = true
     loadError = null
@@ -140,7 +141,7 @@
         applyGains()
       }
 
-      const paths = await invoke('get_stem_paths', { trackId: track.id })
+      const paths = await invoke('get_stem_paths', { trackId: targetId })
 
       const results = await Promise.all(STEMS.map(async ({ key }) => {
         const url = convertFileSrc(paths[key])
@@ -151,6 +152,9 @@
         return [key, buf]
       }))
 
+      // Discard results if the user switched tracks while we were loading
+      if (loadedTrackId !== targetId) return
+
       const newBuffers = Object.fromEntries(results)
       buffers = newBuffers
       waveformData = Object.fromEntries(
@@ -159,10 +163,14 @@
       duration = Object.values(newBuffers)[0]?.duration ?? 0
 
     } catch (e) {
-      loadError = e.message ?? String(e)
-      loadedTrackId = null  // allow retry on next open
+      if (loadedTrackId === targetId) {
+        loadError = e.message ?? String(e)
+        loadedTrackId = null  // allow retry on next open
+      }
     } finally {
-      loading = false
+      if (loadedTrackId === targetId || loadedTrackId === null) {
+        loading = false
+      }
     }
   }
 
@@ -272,7 +280,11 @@
     if (!active && playing) { pausePlayback(); playing = false }
   })
 
-  onMount(() => { loadAudio() })
+  // Reload whenever the selected track changes
+  $effect(() => {
+    const id = track.id  // reactive — re-runs when track changes
+    if (id !== loadedTrackId) loadAudio()
+  })
 
   onDestroy(() => {
     cancelTick()
