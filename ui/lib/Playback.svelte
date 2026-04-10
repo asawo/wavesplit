@@ -244,16 +244,9 @@
     applyGains()
   })
 
-  // Pause and release AudioContext when navigating back to library
+  // Pause when navigating back to library
   $effect(() => {
-    if (!active) {
-      if (playing) { stopSources(); cancelTick() }
-      playing = false
-      audioCtx?.close()
-      audioCtx = null
-      gainNodes = {}
-      loadedTrackId = null
-    }
+    if (!active && playing) { pausePlayback(); playing = false }
   })
 
   // Reload whenever the selected track changes
