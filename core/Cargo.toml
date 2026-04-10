@@ -1,6 +1,6 @@
 [package]
 name = "wavesplit"
-version = "0.1.25"
+version = "0.2.0"
 description = "Desktop app for practicing with isolated audio stems"
 edition = "2021"
 
