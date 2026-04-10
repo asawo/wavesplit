@@ -10,7 +10,7 @@ A cross-platform desktop practice app built with Tauri (Rust backend + Svelte fr
 - Manages a library of tracks with metadata (title, artist)
 - Exports stems + original audio to a user-chosen folder
 - Full playback screen: synchronized 4-stem Web Audio engine, waveform display, per-stem mute/solo/volume
-- Analysis stage is **stubbed out** — marked done immediately, no actual beat/note detection yet (TODO: MVP v2)
+- Analysis stage is **stubbed out** — marked done immediately, no actual beat/note detection yet (TODO: MVP v3)
 
 Primary use case: bass player practice with isolated stems.
 
@@ -97,7 +97,8 @@ just dev        # or: pnpm run tauri dev
 | Phase   | Status | Features |
 |---------|--------|----------|
 | MVP     | Done   | YouTube/local input, stem separation, library, export |
-| MVP v2  | In progress | Playback engine ✓, waveforms ✓, stem mute/solo/volume ✓, beat tracking, bass note display |
+| MVP v2  | Done   | Playback engine, waveforms, stem mute/solo/volume |
+| MVP v3  | Next   | Beat tracking, bass note display |
 | Later   | —      | Chord detection, loop sections |
 
 ## Commit & PR conventions

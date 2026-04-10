@@ -160,7 +160,8 @@ Track data is stored in:
 | Phase   | Status | Features |
 |---------|--------|----------|
 | MVP     | Done | YouTube/local input, stem separation, library, export |
-| MVP v2  | In progress | Playback engine ✓, waveforms ✓, stem mute/solo/volume ✓, beat tracking, bass note display |
+| MVP v2  | Done | Playback engine, waveforms, stem mute/solo/volume |
+| MVP v3  | Next | Beat tracking, bass note display |
 | Later   | — | Chord detection, loop sections |
 
 ---
