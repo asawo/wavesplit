@@ -9,6 +9,26 @@ use crate::paths;
 use crate::pipeline::{self, Source};
 use crate::AppState;
 
+#[derive(serde::Serialize)]
+pub struct StemPaths {
+    pub vocals: String,
+    pub drums: String,
+    pub bass: String,
+    pub other: String,
+}
+
+#[tauri::command]
+pub fn get_stem_paths(track_id: String, state: tauri::State<'_, AppState>) -> Result<StemPaths, String> {
+    let stems = paths::stems_dir(&state.data_dir, &track_id);
+    let p = |name: &str| stems.join(name).to_string_lossy().into_owned();
+    Ok(StemPaths {
+        vocals: p("vocals.wav"),
+        drums:  p("drums.wav"),
+        bass:   p("bass.wav"),
+        other:  p("other.wav"),
+    })
+}
+
 #[tauri::command]
 pub async fn add_track_youtube(
     url: String,
