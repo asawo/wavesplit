@@ -1,6 +1,6 @@
-<img width="500" alt="wavesplit screenshot (library screen)" src="https://github.com/user-attachments/assets/1db258ee-9cfd-4a82-aee4-e63c59664bd6" />
+<img width="894" alt="wavesplit screenshot (library screen)" src="https://github.com/user-attachments/assets/1db258ee-9cfd-4a82-aee4-e63c59664bd6" />
 
-<img width="500" height="712" alt="waveslplit screenshot (playback screen)" src="https://github.com/user-attachments/assets/a45aebfd-2f2d-4ca8-9cd0-a615fd06d8fa" />
+<img width="894" height="712" alt="waveslplit screenshot (playback screen)" src="https://github.com/user-attachments/assets/a45aebfd-2f2d-4ca8-9cd0-a615fd06d8fa" />
 
 # Wavesplit
 
