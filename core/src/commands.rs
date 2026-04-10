@@ -119,9 +119,9 @@ pub fn export_stems(track_id: String, dest_dir: String, state: tauri::State<'_, 
 
     let source_wav = paths::source_wav(&state.data_dir, &track_id);
     if source_wav.exists() {
-        let dst = dest.join("original.wav");
-        std::fs::copy(&source_wav, &dst).map_err(|e| format!("failed to copy original.wav: {e}"))?;
-        exported.push("original.wav".to_string());
+        let dst = dest.join("source.wav");
+        std::fs::copy(&source_wav, &dst).map_err(|e| format!("failed to copy source.wav: {e}"))?;
+        exported.push("source.wav".to_string());
     }
 
     for stem in &["bass", "drums", "vocals", "other"] {
