@@ -10,15 +10,13 @@ Built with Tauri (Rust + Svelte).
 
 ## Features
 
-- Add tracks from a YouTube URL or a local audio file
+- Add tracks from a YouTube URL or a local audio file via [yt-dlp](https://github.com/yt-dlp/yt-dlp)
 - Stem separation via [Demucs](https://github.com/facebookresearch/demucs) (bass, drums, vocals, other)
 - Full playback screen with synchronized 4-stem audio engine
 - Per-stem mute, solo, and volume control
-- Waveform display with clickable seek and real-time playhead
 - Export stems + original audio to any folder
 - Library with search and sort (by newest, oldest, title, or artist)
 - Track metadata editing (title and artist)
-- Real-time progress during pipeline stages
 
 ---
 
@@ -26,7 +24,7 @@ Built with Tauri (Rust + Svelte).
 
 ### 1. First launch — download Demucs
 
-Wavesplit uses [Demucs](https://github.com/facebookresearch/demucs) to separate audio into stems. On first launch, click **Download Demucs** and wait for the one-time download to complete (~1 GB).
+Wavesplit uses [Demucs](https://github.com/facebookresearch/demucs) to separate audio into stems. On first launch, a screen will prompt you to download the audio separation engine. Click **Download** and wait for the one-time download to complete.
 
 ### 2. Add a track
 
