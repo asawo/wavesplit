@@ -238,20 +238,20 @@
         {:else}
           {#if isReady(track)}
             {#if track.export_path}
-              <button class="open-btn" onclick={() => openFolder(track.export_path)} title={track.export_path}>
+              <button class="open-btn" onclick={(e) => { e.stopPropagation(); openFolder(track.export_path) }} title={track.export_path}>
                 Open folder
               </button>
             {/if}
-            <button class="export-btn" onclick={() => exportStems(track)} disabled={exportingId === track.id}>
+            <button class="export-btn" onclick={(e) => { e.stopPropagation(); exportStems(track) }} disabled={exportingId === track.id}>
               {exportingId === track.id ? 'Exporting…' : '↓ Export stems'}
             </button>
           {/if}
           {#if hasError(track, progress)}
-            <button class="retry-btn" onclick={() => retryTrack(track)} disabled={retryingId === track.id}>
+            <button class="retry-btn" onclick={(e) => { e.stopPropagation(); retryTrack(track) }} disabled={retryingId === track.id}>
               {retryingId === track.id ? 'Retrying…' : '↺ Retry'}
             </button>
           {/if}
-          <button class="delete-btn" onclick={() => deleteTrack(track)} title="Delete track">✕</button>
+          <button class="delete-btn" onclick={(e) => { e.stopPropagation(); deleteTrack(track) }} title="Delete track">✕</button>
         {/if}
       </div>
     </div>
