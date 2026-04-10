@@ -89,6 +89,9 @@
     if (loadedTrackId === targetId) return
     loadedTrackId = targetId
 
+    cancelTick()
+    stopSources()
+
     loading = true
     loadError = null
     playing = false
@@ -241,9 +244,16 @@
     applyGains()
   })
 
-  // Pause when navigating back to library
+  // Pause and release AudioContext when navigating back to library
   $effect(() => {
-    if (!active && playing) { pausePlayback(); playing = false }
+    if (!active) {
+      if (playing) { stopSources(); cancelTick() }
+      playing = false
+      audioCtx?.close()
+      audioCtx = null
+      gainNodes = {}
+      loadedTrackId = null
+    }
   })
 
   // Reload whenever the selected track changes
