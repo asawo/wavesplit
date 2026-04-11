@@ -14,6 +14,23 @@ use crate::setup;
 
 const EVENT: &str = "pipeline";
 
+/// Acquire the DB mutex. Returns `Err` if the mutex is poisoned so the pipeline
+/// can emit an error event and abort rather than silently continuing with
+/// potentially corrupt state.
+fn lock_db(db: &Mutex<Connection>) -> Result<std::sync::MutexGuard<'_, Connection>, String> {
+    db.lock().map_err(|_| "database mutex is poisoned".to_string())
+}
+
+/// Acquire the DB mutex or emit a stage error and return from the caller.
+macro_rules! lock_or_abort {
+    ($db:expr, $app:expr, $track_id:expr, $stage:literal) => {
+        match lock_db($db) {
+            Ok(c) => c,
+            Err(e) => { emit($app, $track_id, $stage, "error", Some(e)); return; }
+        }
+    };
+}
+
 /// Write the stage result to the DB: "done" on success, "error" + message on failure.
 fn commit_result(conn: &Connection, track_id: &str, field: &str, result: &Result<(), String>) {
     match result {
@@ -83,7 +100,7 @@ pub async fn run(
         .unwrap_or_else(|e| Err(e.to_string()));
 
         {
-            let conn = db.lock().unwrap_or_else(|e| e.into_inner());
+            let conn = lock_or_abort!(&db, &app, &track_id, "download");
             commit_result(&conn, &track_id, "status_download", &dl_result);
         }
         match dl_result {
@@ -105,7 +122,7 @@ pub async fn run(
         .unwrap_or_else(|e| Err(e.to_string()));
 
         {
-            let conn = db.lock().unwrap_or_else(|e| e.into_inner());
+            let conn = lock_or_abort!(&db, &app, &track_id, "stems");
             commit_result(&conn, &track_id, "status_stems", &stems_result);
         }
         match stems_result {
@@ -118,7 +135,7 @@ pub async fn run(
     if token.is_cancelled() { return; }
     // TODO: re-enable analysis once beat/note detection is ready (MVP v2)
     {
-        let conn = db.lock().unwrap_or_else(|e| e.into_inner());
+        let conn = lock_or_abort!(&db, &app, &track_id, "analysis");
         let _ = db::update_status(&conn, &track_id, "status_analysis", "done", None);
     }
     emit(&app, &track_id, "analysis", "done", None);
@@ -128,6 +145,7 @@ pub async fn run(
 mod tests {
     use super::*;
     use std::path::Path;
+    use std::sync::Arc;
 
     fn open_mem() -> Connection {
         crate::db::open(Path::new(":memory:")).unwrap()
@@ -150,6 +168,21 @@ mod tests {
             export_path: None,
             artist: None,
         }).unwrap();
+    }
+
+    #[test]
+    fn lock_db_returns_err_on_poisoned_mutex() {
+        let db: Arc<Mutex<Connection>> = Arc::new(Mutex::new(open_mem()));
+        let db2 = Arc::clone(&db);
+        // Poison the mutex by panicking while holding the lock
+        let _ = std::thread::spawn(move || {
+            let _guard = db2.lock().unwrap();
+            panic!("intentional panic to poison mutex");
+        })
+        .join();
+
+        let result = lock_db(&db);
+        assert_eq!(result.unwrap_err(), "database mutex is poisoned");
     }
 
     #[test]
