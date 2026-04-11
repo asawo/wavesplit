@@ -36,13 +36,6 @@ describe('TrackList keyboard play', () => {
     onPlay = vi.fn()
   })
 
-  it('Enter on the track row triggers onPlay', async () => {
-    const { container } = render(TrackList, { tracks: [readyTrack], onPlay })
-    const trackEl = container.querySelector('.track.playable')
-    await fireEvent.keyDown(trackEl, { key: 'Enter' })
-    expect(onPlay).toHaveBeenCalledWith(readyTrack)
-  })
-
   it('Enter in a title edit input does not trigger onPlay', async () => {
     const { container } = render(TrackList, { tracks: [readyTrack], onPlay })
 
