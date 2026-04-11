@@ -89,6 +89,9 @@
     if (loadedTrackId === targetId) return
     loadedTrackId = targetId
 
+    cancelTick()
+    stopSources()
+
     loading = true
     loadError = null
     playing = false

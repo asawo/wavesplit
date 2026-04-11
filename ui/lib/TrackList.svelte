@@ -193,7 +193,6 @@
       role={isReady(track) && onPlay ? 'button' : undefined}
       tabindex={isReady(track) && onPlay ? 0 : undefined}
       onclick={() => { if (onPlay && isReady(track) && editingId !== track.id) onPlay(track) }}
-      onkeydown={(e) => { if (e.key === 'Enter' && onPlay && isReady(track) && editingId !== track.id) onPlay(track) }}
     >
       <div class="track-info">
         {#if track.id === PENDING_ID}
