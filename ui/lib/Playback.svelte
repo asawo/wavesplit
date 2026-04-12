@@ -103,6 +103,9 @@
     try {
       if (!audioCtx) {
         audioCtx = new AudioContext()
+        audioCtx.addEventListener('statechange', () => {
+          if (playing && audioCtx.state === 'suspended') audioCtx.resume()
+        })
         for (const stem of STEMS) {
           gainNodes[stem.key] = audioCtx.createGain()
           gainNodes[stem.key].connect(audioCtx.destination)
@@ -145,8 +148,9 @@
 
   // ── Playback control ───────────────────────────────────────
 
-  function startPlayback() {
+  async function startPlayback() {
     if (!audioCtx || Object.keys(buffers).length === 0) return
+    if (audioCtx.state !== 'running') await audioCtx.resume()
     const offset = Math.max(0, Math.min(startOffset, duration - 0.01))
     startTime = audioCtx.currentTime
     for (const { key } of STEMS) {
@@ -183,8 +187,7 @@
       pausePlayback()
       playing = false
     } else {
-      if (audioCtx.state === 'suspended') await audioCtx.resume()
-      startPlayback()
+      await startPlayback()
       playing = true
     }
   }
@@ -196,8 +199,7 @@
     startOffset = safeFraction * duration
     playhead = safeFraction
     if (was) {
-      if (audioCtx?.state === 'suspended') await audioCtx.resume()
-      startPlayback()
+      await startPlayback()
       playing = true
     }
   }
