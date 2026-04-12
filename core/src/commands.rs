@@ -11,6 +11,25 @@ use crate::paths;
 use crate::pipeline::{self, Source};
 use crate::AppState;
 
+const ALLOWED_YOUTUBE_HOSTS: &[&str] = &[
+    "youtube.com",
+    "www.youtube.com",
+    "youtu.be",
+    "music.youtube.com",
+];
+
+fn validate_youtube_url(raw: &str) -> Result<(), String> {
+    let parsed = url::Url::parse(raw).map_err(|_| "Invalid URL".to_string())?;
+    if parsed.scheme() != "https" {
+        return Err("URL must use the https scheme".to_string());
+    }
+    let host = parsed.host_str().unwrap_or("");
+    if !ALLOWED_YOUTUBE_HOSTS.contains(&host) {
+        return Err(format!("URL host '{host}' is not an allowed YouTube domain"));
+    }
+    Ok(())
+}
+
 struct TaskGuard {
     tasks: Arc<Mutex<HashMap<String, CancellationToken>>>,
     track_id: String,
@@ -69,6 +88,7 @@ pub async fn add_track_youtube(
     app: AppHandle,
     state: tauri::State<'_, AppState>,
 ) -> Result<String, String> {
+    validate_youtube_url(&url)?;
     let title = pipeline::download::youtube_title(&url)
         .unwrap_or_else(|| url.clone());
     add_track(Source::Youtube(url.clone()), title, Some(url), None, app, state).await
@@ -258,6 +278,34 @@ mod tests {
     use std::collections::HashMap;
     use std::sync::{Arc, Mutex};
     use tokio_util::sync::CancellationToken;
+
+    #[test]
+    fn validate_youtube_url_accepts_valid() {
+        let valid = [
+            "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            "https://youtu.be/dQw4w9WgXcQ",
+            "https://youtube.com/watch?v=dQw4w9WgXcQ",
+            "https://music.youtube.com/watch?v=dQw4w9WgXcQ",
+        ];
+        for url in &valid {
+            assert!(validate_youtube_url(url).is_ok(), "should accept: {url}");
+        }
+    }
+
+    #[test]
+    fn validate_youtube_url_rejects_invalid() {
+        let invalid = [
+            ("http://www.youtube.com/watch?v=x", "non-https scheme"),
+            ("https://evil.com/watch?v=x", "foreign host"),
+            ("https://192.168.1.1/foo", "IP address"),
+            ("not a url at all", "garbage input"),
+            ("file:///etc/passwd", "file scheme"),
+            ("https://www.youtube.com.evil.com/x", "lookalike domain"),
+        ];
+        for (url, label) in &invalid {
+            assert!(validate_youtube_url(url).is_err(), "should reject ({label}): {url}");
+        }
+    }
 
     #[tokio::test]
     async fn task_removed_from_map_on_pipeline_panic() {
