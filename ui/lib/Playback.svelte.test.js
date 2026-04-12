@@ -33,6 +33,7 @@ function makeAudioCtx() {
     destination: {},
     currentTime: 0,
     state: 'running',
+    addEventListener: vi.fn(),
     close: vi.fn().mockResolvedValue(undefined),
     decodeAudioData: vi.fn().mockResolvedValue(mockBuffer()),
     resume: vi.fn().mockResolvedValue(undefined),
