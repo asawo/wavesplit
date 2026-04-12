@@ -8,11 +8,27 @@
   let loading = $state(false)
   let error = $state('')
 
+  const YOUTUBE_PATTERN = 'https://(www\\.youtube\\.com|youtu\\.be|music\\.youtube\\.com)/.+'
+
+  function normalizeUrl(value) {
+    const trimmed = value.trim()
+    if (trimmed && !/^https?:\/\//i.test(trimmed)) return 'https://' + trimmed
+    return trimmed
+  }
+
+  function isValidYoutubeUrl(value) {
+    return new RegExp('^' + YOUTUBE_PATTERN + '$').test(normalizeUrl(value))
+  }
+
+  let urlError = $derived(
+    url.trim() && !isValidYoutubeUrl(url) ? 'Must be a YouTube URL (youtube.com, youtu.be, music.youtube.com)' : ''
+  )
+
   async function addYoutube() {
     if (!url.trim()) return
     loading = true
     error = ''
-    const pendingUrl = url.trim()
+    const pendingUrl = normalizeUrl(url)
     url = ''
     onStarted(pendingUrl)
     try {
@@ -57,11 +73,13 @@
       disabled={loading}
       onkeydown={(e) => e.key === 'Enter' && addYoutube()}
     />
-    <button onclick={addYoutube} disabled={loading || !url.trim()}>Add</button>
+    <button onclick={addYoutube} disabled={loading || !isValidYoutubeUrl(url)}>Add</button>
     <span class="divider">or</span>
     <button onclick={addLocal} disabled={loading}>Open file…</button>
   </div>
-  {#if error}
+  {#if urlError}
+    <p class="error">{urlError}</p>
+  {:else if error}
     <p class="error">{error}</p>
   {/if}
 </div>

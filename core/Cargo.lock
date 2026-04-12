@@ -5020,6 +5020,7 @@ dependencies = [
  "tauri-plugin-opener",
  "tokio",
  "tokio-util",
+ "url",
  "uuid",
  "which",
 ]
