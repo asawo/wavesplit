@@ -1,4 +1,6 @@
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
+use rusqlite::Connection;
 use tauri::AppHandle;
 use uuid::Uuid;
 use chrono::Utc;
@@ -8,6 +10,38 @@ use crate::db::{self, Track};
 use crate::paths;
 use crate::pipeline::{self, Source};
 use crate::AppState;
+
+struct TaskGuard {
+    tasks: Arc<Mutex<HashMap<String, CancellationToken>>>,
+    track_id: String,
+}
+
+impl Drop for TaskGuard {
+    fn drop(&mut self) {
+        if let Ok(mut tasks) = self.tasks.lock() {
+            tasks.remove(&self.track_id);
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn spawn_pipeline(
+    track_id: String,
+    source: pipeline::Source,
+    db: Arc<Mutex<Connection>>,
+    data_dir: std::path::PathBuf,
+    demucs_dir: std::path::PathBuf,
+    token: CancellationToken,
+    app: AppHandle,
+    start_stage: pipeline::StartStage,
+    tasks: Arc<Mutex<HashMap<String, CancellationToken>>>,
+) {
+    tasks.lock().unwrap_or_else(|e| e.into_inner()).insert(track_id.clone(), token.clone());
+    tokio::spawn(async move {
+        let _guard = TaskGuard { tasks, track_id: track_id.clone() };
+        pipeline::run(track_id, source, db, data_dir, demucs_dir, token, app, start_stage).await;
+    });
+}
 
 #[derive(serde::Serialize)]
 pub struct StemPaths {
@@ -91,21 +125,17 @@ async fn add_track(
 
     // Spawn pipeline in background with a cancellation token.
     let token = CancellationToken::new();
-    {
-        let mut tasks = state.tasks.lock().map_err(|_| "tasks unavailable".to_string())?;
-        tasks.insert(id.clone(), token.clone());
-    }
-    let db = Arc::clone(&state.db);
-    let data_dir = state.data_dir.clone();
-    let demucs_dir = state.demucs_dir.clone();
-    let tasks = Arc::clone(&state.tasks);
-    let track_id = id.clone();
-    tokio::spawn(async move {
-        pipeline::run(track_id.clone(), source, db, data_dir, demucs_dir, token, app, pipeline::StartStage::Download).await;
-        if let Ok(mut tasks) = tasks.lock() {
-            tasks.remove(&track_id);
-        }
-    });
+    spawn_pipeline(
+        id.clone(),
+        source,
+        Arc::clone(&state.db),
+        state.data_dir.clone(),
+        state.demucs_dir.clone(),
+        token,
+        app,
+        pipeline::StartStage::Download,
+        Arc::clone(&state.tasks),
+    );
 
     Ok(id)
 }
@@ -207,21 +237,48 @@ pub async fn retry_track(
     };
 
     let token = CancellationToken::new();
-    {
-        let mut tasks = state.tasks.lock().map_err(|_| "tasks unavailable".to_string())?;
-        tasks.insert(id.clone(), token.clone());
-    }
-    let db = Arc::clone(&state.db);
-    let data_dir = state.data_dir.clone();
-    let demucs_dir = state.demucs_dir.clone();
-    let tasks = Arc::clone(&state.tasks);
-    let track_id = id.clone();
-    tokio::spawn(async move {
-        pipeline::run(track_id.clone(), source, db, data_dir, demucs_dir, token, app, start_stage).await;
-        if let Ok(mut tasks) = tasks.lock() {
-            tasks.remove(&track_id);
-        }
-    });
+    spawn_pipeline(
+        id,
+        source,
+        Arc::clone(&state.db),
+        state.data_dir.clone(),
+        state.demucs_dir.clone(),
+        token,
+        app,
+        start_stage,
+        Arc::clone(&state.tasks),
+    );
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+    use std::sync::{Arc, Mutex};
+    use tokio_util::sync::CancellationToken;
+
+    #[tokio::test]
+    async fn task_removed_from_map_on_pipeline_panic() {
+        let tasks: Arc<Mutex<HashMap<String, CancellationToken>>> =
+            Arc::new(Mutex::new(HashMap::new()));
+        let track_id = "test-track-id".to_string();
+        let token = CancellationToken::new();
+
+        tasks.lock().unwrap().insert(track_id.clone(), token);
+
+        let tasks_clone = Arc::clone(&tasks);
+        let tid = track_id.clone();
+        let handle = tokio::spawn(async move {
+            let _guard = TaskGuard { tasks: tasks_clone, track_id: tid };
+            panic!("simulated pipeline panic");
+        });
+        let _ = handle.await; // absorb JoinError
+
+        assert!(
+            !tasks.lock().unwrap().contains_key(&track_id),
+            "task entry should be removed even after a panic"
+        );
+    }
 }
