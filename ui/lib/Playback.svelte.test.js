@@ -150,6 +150,44 @@ describe('Waveform gradient rendering', () => {
     expect(stops[0].getAttribute('offset')).toBe('0%')
     expect(stops[1].getAttribute('offset')).toBe('0%')
   })
+
+  it('updates gradient stop offsets when playhead advances', async () => {
+    let capturedTick
+    vi.mocked(requestAnimationFrame).mockImplementationOnce(cb => {
+      capturedTick = cb
+      return 1
+    })
+
+    const { container } = render(Playback, { track: makeTrack('t1'), active: true, onBack: vi.fn() })
+    await waitForAudio(container)
+
+    await fireEvent.click(container.querySelector('.play-btn'))
+    expect(capturedTick).toBeDefined()
+
+    // Advance audio time to half the 10s track (duration comes from mockBuffer.duration = 10)
+    audioCtx.currentTime = 5
+    capturedTick()
+
+    await waitFor(() => {
+      const stops = container.querySelectorAll('svg.waveform linearGradient stop')
+      expect(stops[0].getAttribute('offset')).toBe('50%')
+      expect(stops[1].getAttribute('offset')).toBe('50%')
+    })
+  })
+
+  it('muted stem gradient uses muted color for both stops', async () => {
+    const { container } = render(Playback, { track: makeTrack('t1'), active: true, onBack: vi.fn() })
+
+    // Mute the vocals stem (first mute button)
+    await fireEvent.click(container.querySelectorAll('[title="Mute"]')[0])
+
+    await waitFor(() => {
+      const gradient = container.querySelector('linearGradient[id="wf-t1-vocals"]')
+      const stops = gradient.querySelectorAll('stop')
+      expect(stops[0].getAttribute('stop-color')).toBe('#2e2e2e')
+      expect(stops[1].getAttribute('stop-color')).toBe('#2e2e2e')
+    })
+  })
 })
 
 describe('Playback resource management', () => {
