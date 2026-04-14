@@ -6,6 +6,7 @@ import {
   extractWaveform,
   applyToggleSolo,
   computeMuted,
+  waveformGradientId,
 } from './playback.helpers.js'
 
 // ── formatTime ──────────────────────────────────────────────
@@ -162,5 +163,22 @@ describe('computeMuted', () => {
     // if bass were the soloed stem, the mute flag should not override it
     const s2 = makeStemState({ bass: true }, { bass: true })
     expect(computeMuted(s2, 'bass')).toBe(false) // soloed → audible even if mute flag is set
+  })
+})
+
+// ── waveformGradientId ──────────────────────────────────────
+
+describe('waveformGradientId', () => {
+  it("formats as 'wf-{trackId}-{stemKey}'", () => {
+    expect(waveformGradientId('abc', 'bass')).toBe('wf-abc-bass')
+  })
+  it("works for 'master' key", () => {
+    expect(waveformGradientId('abc', 'master')).toBe('wf-abc-master')
+  })
+  it('produces unique IDs for different trackIds', () => {
+    expect(waveformGradientId('t1', 'bass')).not.toBe(waveformGradientId('t2', 'bass'))
+  })
+  it('produces unique IDs for different stemKeys', () => {
+    expect(waveformGradientId('t1', 'bass')).not.toBe(waveformGradientId('t1', 'drums'))
   })
 })

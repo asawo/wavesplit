@@ -2,7 +2,7 @@
   import { invoke, convertFileSrc } from '@tauri-apps/api/core'
   import { open as openDialog } from '@tauri-apps/plugin-dialog'
   import { onDestroy } from 'svelte'
-  import { formatTime, hashStr, makeWaveformBars, extractWaveform } from './playback.helpers.js'
+  import { formatTime, hashStr, makeWaveformBars, extractWaveform, waveformGradientId } from './playback.helpers.js'
 
   let { track, active, onBack } = $props()
 
@@ -55,6 +55,8 @@
   // Time display — prefer real decoded duration, fall back to DB
   let displayDuration = $derived(duration > 0 ? duration : (track.duration_ms ?? 0) / 1000)
   let elapsedSeconds = $derived(playhead * displayDuration)
+
+  const masterGradId = $derived(waveformGradientId(track.id, 'master'))
 
   // Master waveform = RMS average of all loaded stems
   let masterWaveform = $derived((() => {
@@ -301,11 +303,18 @@
       <div class="waveform-wrap" role="presentation" onclick={seekToClick}
            style="opacity:{loading ? 0.4 : 1}; transition:opacity 0.3s">
         <svg class="waveform" viewBox="0 0 400 60" preserveAspectRatio="none">
+          <defs>
+            <linearGradient id={masterGradId}
+                            gradientUnits="userSpaceOnUse" x1="0" x2="400" y1="0" y2="0">
+              <stop offset="{playhead * 100}%" stop-color="#4caf72" />
+              <stop offset="{playhead * 100}%" stop-color="#383838" />
+            </linearGradient>
+          </defs>
           {#each (masterWaveform ?? makeWaveformBars(track.id, 120)) as h, i}
             {@const x = i * (400 / 120)}
             {@const bh = h * 54}
             <rect x={x} y={(60 - bh) / 2} width="2.2" height={bh} rx="1"
-                  fill={(i / 120) < playhead ? '#4caf72' : '#383838'} />
+                  fill="url(#{masterGradId})" />
           {/each}
         </svg>
         <div class="playhead" style="left:{playhead * 100}%">
@@ -344,15 +353,23 @@
     {#each STEMS as stem}
       {@const state = stemState[stem.key]}
       {@const muted = isMuted(stem.key)}
+      {@const stemGradId = waveformGradientId(track.id, stem.key)}
       <div class="stem-row">
         <span class="stem-label" style="color:{muted ? 'var(--fg-muted)' : stem.color}">{stem.label}</span>
         <div class="stem-waveform-wrap" style="opacity:{loading ? 0.35 : 1}; transition:opacity 0.3s">
           <svg class="stem-waveform" viewBox="0 0 400 28" preserveAspectRatio="none">
+            <defs>
+              <linearGradient id={stemGradId}
+                              gradientUnits="userSpaceOnUse" x1="0" x2="400" y1="0" y2="0">
+                <stop offset="{playhead * 100}%" stop-color={muted ? '#2e2e2e' : stem.color} />
+                <stop offset="{playhead * 100}%" stop-color={muted ? '#2e2e2e' : '#383838'} />
+              </linearGradient>
+            </defs>
             {#each (waveformData[stem.key] ?? makeWaveformBars(track.id + stem.key, 120)) as h, i}
               {@const x = i * (400 / 120)}
               {@const bh = h * 24}
               <rect x={x} y={(28 - bh) / 2} width="2.2" height={bh} rx="0.5"
-                    fill={muted ? '#2e2e2e' : ((i / 120) < playhead ? stem.color : '#383838')}
+                    fill="url(#{stemGradId})"
                     opacity={muted ? 0.5 : 1} />
             {/each}
           </svg>
