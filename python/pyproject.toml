@@ -10,7 +10,8 @@ dependencies = [
     "librosa (>=0.11.0,<0.12.0)",
     "numpy (>=2.4.4,<3.0.0)",
     "demucs (>=4.0.1,<5.0.0)",
-    "torchaudio (==2.7.0)"
+    "torch (>=2.7.0,<3.0.0)",
+    "torchaudio (>=2.7.0,<3.0.0)"
 ]
 
 
