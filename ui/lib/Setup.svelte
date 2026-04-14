@@ -13,6 +13,8 @@
   onDestroy(() => unlisten?.())
 
   async function startDownload() {
+    if (downloading) return
+    unlisten?.()
     downloading = true
     error = null
     progress = null
