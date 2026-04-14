@@ -89,6 +89,69 @@ async function waitForAudio(container) {
   })
 }
 
+describe('Waveform gradient rendering', () => {
+  it('renders a linearGradient inside the master waveform SVG', async () => {
+    const { container } = render(Playback, { track: makeTrack('t1'), active: true, onBack: vi.fn() })
+    const gradient = container.querySelector('svg.waveform linearGradient')
+    expect(gradient).not.toBeNull()
+  })
+
+  it('master gradient id is wf-{track.id}-master', async () => {
+    const { container } = render(Playback, { track: makeTrack('t1'), active: true, onBack: vi.fn() })
+    expect(container.querySelector('svg.waveform linearGradient').id).toBe('wf-t1-master')
+  })
+
+  it('all 120 master rects use gradient URL fill, not a hex color', async () => {
+    const { container } = render(Playback, { track: makeTrack('t1'), active: true, onBack: vi.fn() })
+    const rects = container.querySelectorAll('svg.waveform rect')
+    expect(rects.length).toBe(120)
+    for (const rect of rects) {
+      expect(rect.getAttribute('fill')).toBe('url(#wf-t1-master)')
+    }
+  })
+
+  it('renders a linearGradient inside each of the 4 stem waveform SVGs', async () => {
+    const { container } = render(Playback, { track: makeTrack('t1'), active: true, onBack: vi.fn() })
+    const svgs = container.querySelectorAll('svg.stem-waveform')
+    expect(svgs.length).toBe(4)
+    for (const svg of svgs) {
+      expect(svg.querySelector('linearGradient')).not.toBeNull()
+    }
+  })
+
+  it('stem gradient IDs match expected keys', async () => {
+    const { container } = render(Playback, { track: makeTrack('t1'), active: true, onBack: vi.fn() })
+    const ids = Array.from(container.querySelectorAll('svg.stem-waveform linearGradient')).map(g => g.id)
+    for (const key of ['vocals', 'drums', 'bass', 'other']) {
+      expect(ids).toContain(`wf-t1-${key}`)
+    }
+  })
+
+  it('all 120 rects in each stem waveform use gradient URL fill', async () => {
+    const { container } = render(Playback, { track: makeTrack('t1'), active: true, onBack: vi.fn() })
+    for (const svg of container.querySelectorAll('svg.stem-waveform')) {
+      const rects = svg.querySelectorAll('rect')
+      expect(rects.length).toBe(120)
+      for (const rect of rects) {
+        expect(rect.getAttribute('fill')).toMatch(/^url\(#wf-/)
+      }
+    }
+  })
+
+  it('master gradient has exactly 2 stops', async () => {
+    const { container } = render(Playback, { track: makeTrack('t1'), active: true, onBack: vi.fn() })
+    const stops = container.querySelectorAll('svg.waveform linearGradient stop')
+    expect(stops.length).toBe(2)
+  })
+
+  it('master gradient stops are both at 0% on initial render (playhead=0)', async () => {
+    const { container } = render(Playback, { track: makeTrack('t1'), active: true, onBack: vi.fn() })
+    const stops = container.querySelectorAll('svg.waveform linearGradient stop')
+    expect(stops[0].getAttribute('offset')).toBe('0%')
+    expect(stops[1].getAttribute('offset')).toBe('0%')
+  })
+})
+
 describe('Playback resource management', () => {
   it('cancels the existing RAF loop when switching to a different track', async () => {
     const { container, rerender } = render(Playback, {

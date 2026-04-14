@@ -49,3 +49,7 @@ export function computeMuted(stemState, key) {
   const anySoloed = Object.values(stemState).some(s => s.soloed)
   return anySoloed ? !stemState[key].soloed : stemState[key].muted
 }
+
+export function waveformGradientId(trackId, stemKey) {
+  return `wf-${trackId}-${stemKey}`
+}
