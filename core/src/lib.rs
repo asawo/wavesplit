@@ -56,7 +56,7 @@ async fn download_demucs(app: AppHandle, state: tauri::State<'_, AppState>) -> R
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
-pub fn run() {
+pub fn run(ctx: tauri::Context) {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
@@ -94,6 +94,6 @@ pub fn run() {
             commands::retry_track,
             commands::get_stem_paths,
         ])
-        .run(tauri::generate_context!())
+        .run(ctx)
         .expect("error while running tauri application");
 }
