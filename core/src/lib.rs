@@ -55,6 +55,7 @@ async fn download_demucs(app: AppHandle, state: tauri::State<'_, AppState>) -> R
     setup::download(&demucs_dir, &app).await
 }
 
+#[cfg(not(test))]
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()

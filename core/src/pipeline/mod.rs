@@ -5,7 +5,7 @@ mod stems;
 
 use rusqlite::Connection;
 use std::sync::{Arc, Mutex};
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Runtime};
 use tokio_util::sync::CancellationToken;
 
 use crate::db;
@@ -49,7 +49,7 @@ struct PipelineEvent<'a> {
     message: Option<String>,
 }
 
-fn emit(app: &AppHandle, track_id: &str, stage: &str, status: &str, message: Option<String>) {
+fn emit<R: Runtime>(app: &AppHandle<R>, track_id: &str, stage: &str, status: &str, message: Option<String>) {
     if let Err(e) = app.emit(EVENT, PipelineEvent { track_id, stage, status, message }) {
         // TODO: replace with structured logging once #22 lands
         eprintln!("[pipeline] emit failed for track={track_id} stage={stage}: {e}");
@@ -71,23 +71,18 @@ pub enum StartStage {
 /// Each stage updates the DB status and emits a Tauri event.
 /// Returns early (silently) if the cancellation token is triggered.
 #[allow(clippy::too_many_arguments)]
-pub async fn run(
+pub async fn run<R: Runtime>(
     track_id: String,
     source: Source,
     db: Arc<Mutex<Connection>>,
     data_dir: std::path::PathBuf,
     demucs_dir: std::path::PathBuf,
     token: CancellationToken,
-    app: AppHandle,
+    app: AppHandle<R>,
     start_stage: StartStage,
 ) {
     let source_wav = paths::source_wav(&data_dir, &track_id);
     let stems_dir = paths::stems_dir(&data_dir, &track_id);
-    let Some(demucs_bin) = setup::resolve_binary(&demucs_dir) else {
-        emit(&app, &track_id, "stems", "error", Some("demucs not found".to_string()));
-        return;
-    };
-    let cache_dir = setup::cache_dir(&demucs_dir);
 
     // --- Stage 1: download ---
     if matches!(start_stage, StartStage::Download) {
@@ -118,6 +113,12 @@ pub async fn run(
 
     // --- Stage 2: stems ---
     if matches!(start_stage, StartStage::Download | StartStage::Stems) {
+        let Some(demucs_bin) = setup::resolve_binary(&demucs_dir) else {
+            emit(&app, &track_id, "stems", "error", Some("demucs not found".to_string()));
+            return;
+        };
+        let cache_dir = setup::cache_dir(&demucs_dir);
+
         if token.is_cancelled() { return; }
         emit(&app, &track_id, "stems", "started", None);
         let stems_result = tokio::task::spawn_blocking({
@@ -225,5 +226,52 @@ mod tests {
         // "no_such_column" is not a valid column — the DB write should fail
         let result = commit_result(&conn, "t3", "no_such_column", &Ok(()));
         assert!(result.is_err());
+    }
+
+    /// Simulate a DB failure mid-pipeline: drop the schema so the analysis
+    /// status write fails, then verify the pipeline emits an error event
+    /// rather than hanging or silently completing.
+    #[tokio::test]
+    async fn run_emits_error_event_when_db_write_fails() {
+        use tauri::Listener;
+
+        let app = tauri::test::mock_builder()
+            .build(tauri::generate_context!())
+            .unwrap();
+        let handle = app.handle().clone();
+
+        let (tx, rx) = std::sync::mpsc::channel::<String>();
+        handle.listen("pipeline", move |e| {
+            let _ = tx.send(e.payload().to_string());
+        });
+
+        // Destroy the schema so every DB write will fail with "no such table"
+        let conn = crate::db::open(std::path::Path::new(":memory:")).unwrap();
+        conn.execute("DROP TABLE tracks", []).unwrap();
+        let db = Arc::new(Mutex::new(conn));
+
+        // StartStage::Analysis skips download and stems (no yt-dlp / demucs needed)
+        run(
+            "t-fail".to_string(),
+            Source::Local(std::path::PathBuf::from("/dev/null")),
+            db,
+            std::path::PathBuf::from("/tmp"),
+            std::path::PathBuf::from("/tmp"),
+            CancellationToken::new(),
+            handle,
+            StartStage::Analysis,
+        )
+        .await;
+
+        // Events are dispatched synchronously in MockRuntime, so they are
+        // already in the channel by the time run() returns.
+        let payloads: Vec<_> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
+
+        assert!(
+            payloads.iter().any(|p| {
+                p.contains(r#""stage":"analysis""#) && p.contains(r#""status":"error""#)
+            }),
+            "expected analysis/error pipeline event, got: {payloads:?}"
+        );
     }
 }
