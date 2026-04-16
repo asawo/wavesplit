@@ -89,6 +89,28 @@ struct DownloadProgress {
     percent: Option<u32>,
 }
 
+#[cfg(target_os = "macos")]
+fn remove_quarantine(dest: &Path) -> Result<(), String> {
+    let path_str = dest.to_str().ok_or_else(|| {
+        format!(
+            "cannot remove quarantine: path contains non-UTF-8 characters: {}",
+            dest.to_string_lossy()
+        )
+    })?;
+
+    let output = std::process::Command::new("xattr")
+        .args(["-d", "com.apple.quarantine", path_str])
+        .output()
+        .map_err(|e| format!("xattr failed to start: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("xattr failed: {stderr}"));
+    }
+
+    Ok(())
+}
+
 pub async fn download(demucs_dir: &Path, app: &AppHandle) -> Result<(), String> {
     std::fs::create_dir_all(demucs_dir)
         .map_err(|e| format!("failed to create demucs dir: {e}"))?;
@@ -170,12 +192,35 @@ pub async fn download(demucs_dir: &Path, app: &AppHandle) -> Result<(), String> 
     // Gatekeeper uses to block unsigned executables. Strip it so the binary
     // can actually be invoked after download.
     #[cfg(target_os = "macos")]
-    {
-        std::process::Command::new("xattr")
-            .args(["-d", "com.apple.quarantine", dest.to_str().unwrap_or("")])
-            .output()
-            .ok();
-    }
+    remove_quarantine(&dest)?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn remove_quarantine_errors_on_non_utf8_path() {
+        use super::remove_quarantine;
+        use std::ffi::OsStr;
+        use std::os::unix::ffi::OsStrExt;
+        use std::path::Path;
+
+        let non_utf8 = OsStr::from_bytes(&[0x80, 0x81]); // invalid UTF-8
+        let path = Path::new(non_utf8);
+        let result = remove_quarantine(path);
+        assert!(result.is_err(), "expected Err for non-UTF8 path, got Ok");
+        assert!(result.unwrap_err().contains("non-UTF-8"));
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn remove_quarantine_errors_when_xattr_fails() {
+        use super::remove_quarantine;
+        use std::path::Path;
+
+        let result = remove_quarantine(Path::new("/nonexistent/path/demucs"));
+        assert!(result.is_err(), "expected Err when xattr fails, got Ok");
+    }
 }
