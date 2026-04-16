@@ -199,14 +199,13 @@ pub async fn download(demucs_dir: &Path, app: &AppHandle) -> Result<(), String> 
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use std::path::Path;
-
     #[cfg(target_os = "macos")]
     #[test]
     fn remove_quarantine_errors_on_non_utf8_path() {
+        use super::remove_quarantine;
         use std::ffi::OsStr;
         use std::os::unix::ffi::OsStrExt;
+        use std::path::Path;
 
         let non_utf8 = OsStr::from_bytes(&[0x80, 0x81]); // invalid UTF-8
         let path = Path::new(non_utf8);
@@ -218,6 +217,9 @@ mod tests {
     #[cfg(target_os = "macos")]
     #[test]
     fn remove_quarantine_errors_when_xattr_fails() {
+        use super::remove_quarantine;
+        use std::path::Path;
+
         let result = remove_quarantine(Path::new("/nonexistent/path/demucs"));
         assert!(result.is_err(), "expected Err when xattr fails, got Ok");
     }
