@@ -381,6 +381,7 @@
                 onclick={() => toggleSolo(stem.key)} title="Solo">S</button>
         <input class="vol-slider" type="range" min="0" max="1" step="0.01"
                value={state.volume}
+               aria-label="{stem.label} volume"
                style="accent-color:{stem.color}"
                oninput={(e) => stemState[stem.key] = { ...state, volume: +e.target.value }} />
       </div>
