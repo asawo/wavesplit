@@ -33,7 +33,7 @@ macro_rules! lock_or_abort {
 
 /// Write the stage result to the DB: "done" on success, "error" + message on failure.
 /// Returns `Err` if the DB write itself fails so the caller can emit an error event and abort.
-fn commit_result(conn: &Connection, track_id: &str, field: &str, result: &Result<(), String>) -> Result<(), String> {
+fn commit_result(conn: &Connection, track_id: &str, field: db::StatusField, result: &Result<(), String>) -> Result<(), String> {
     match result {
         Ok(_) => db::update_status(conn, track_id, field, "done", None).map_err(|e| e.to_string()),
         Err(e) => db::update_status(conn, track_id, field, "error", Some(e)).map_err(|e| e.to_string()),
@@ -100,7 +100,7 @@ pub async fn run<R: Runtime>(
 
         {
             let conn = lock_or_abort!(&db, &app, &track_id, "download");
-            if let Err(e) = commit_result(&conn, &track_id, "status_download", &dl_result) {
+            if let Err(e) = commit_result(&conn, &track_id, db::StatusField::Download, &dl_result) {
                 emit(&app, &track_id, "download", "error", Some(format!("failed to write status: {e}")));
                 return;
             }
@@ -131,7 +131,7 @@ pub async fn run<R: Runtime>(
 
         {
             let conn = lock_or_abort!(&db, &app, &track_id, "stems");
-            if let Err(e) = commit_result(&conn, &track_id, "status_stems", &stems_result) {
+            if let Err(e) = commit_result(&conn, &track_id, db::StatusField::Stems, &stems_result) {
                 emit(&app, &track_id, "stems", "error", Some(format!("failed to write status: {e}")));
                 return;
             }
@@ -147,7 +147,7 @@ pub async fn run<R: Runtime>(
     // TODO: re-enable analysis once beat/note detection is ready (MVP v2)
     {
         let conn = lock_or_abort!(&db, &app, &track_id, "analysis");
-        if let Err(e) = db::update_status(&conn, &track_id, "status_analysis", "done", None) {
+        if let Err(e) = db::update_status(&conn, &track_id, db::StatusField::Analysis, "done", None) {
             emit(&app, &track_id, "analysis", "error", Some(format!("failed to write status: {e}")));
             return;
         }
@@ -203,7 +203,7 @@ mod tests {
     fn commit_result_ok_sets_done() {
         let conn = open_mem();
         insert_pending(&conn, "t1");
-        assert!(commit_result(&conn, "t1", "status_download", &Ok(())).is_ok());
+        assert!(commit_result(&conn, "t1", db::StatusField::Download, &Ok(())).is_ok());
         let track = crate::db::get_track(&conn, "t1").unwrap().unwrap();
         assert_eq!(track.status_download, "done");
         assert_eq!(track.error_message, None);
@@ -213,22 +213,13 @@ mod tests {
     fn commit_result_err_sets_error_and_message() {
         let conn = open_mem();
         insert_pending(&conn, "t2");
-        assert!(commit_result(&conn, "t2", "status_stems", &Err("demucs crashed".to_string())).is_ok());
+        assert!(commit_result(&conn, "t2", db::StatusField::Stems, &Err("demucs crashed".to_string())).is_ok());
         let track = crate::db::get_track(&conn, "t2").unwrap().unwrap();
         assert_eq!(track.status_stems, "error");
         assert_eq!(track.error_message.as_deref(), Some("demucs crashed"));
     }
 
-    #[test]
-    fn commit_result_returns_err_on_bad_field() {
-        let conn = open_mem();
-        insert_pending(&conn, "t3");
-        // "no_such_column" is not a valid column — the DB write should fail
-        let result = commit_result(&conn, "t3", "no_such_column", &Ok(()));
-        assert!(result.is_err());
-    }
-
-    /// Simulate a DB failure mid-pipeline: drop the schema so the analysis
+/// Simulate a DB failure mid-pipeline: drop the schema so the analysis
     /// status write fails, then verify the pipeline emits an error event
     /// rather than hanging or silently completing.
     #[tokio::test]

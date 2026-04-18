@@ -2,6 +2,22 @@ use rusqlite::{Connection, Result, params};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
+pub enum StatusField {
+    Download,
+    Stems,
+    Analysis,
+}
+
+impl StatusField {
+    fn column(&self) -> &'static str {
+        match self {
+            Self::Download => "status_download",
+            Self::Stems => "status_stems",
+            Self::Analysis => "status_analysis",
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Track {
     pub id: String,
@@ -88,13 +104,13 @@ pub fn list_tracks(conn: &Connection) -> Result<Vec<Track>> {
 pub fn update_status(
     conn: &Connection,
     id: &str,
-    field: &str,
+    field: StatusField,
     status: &str,
     error: Option<&str>,
 ) -> Result<()> {
     let sql = format!(
         "UPDATE tracks SET {} = ?1, error_message = ?2 WHERE id = ?3",
-        field
+        field.column()
     );
     conn.execute(&sql, params![status, error, id])?;
     Ok(())
@@ -217,7 +233,7 @@ mod tests {
     fn update_status_sets_done() {
         let conn = open_mem();
         insert_track(&conn, &sample_track("t2")).unwrap();
-        update_status(&conn, "t2", "status_download", "done", None).unwrap();
+        update_status(&conn, "t2", StatusField::Download, "done", None).unwrap();
         let track = get_track(&conn, "t2").unwrap().unwrap();
         assert_eq!(track.status_download, "done");
         assert_eq!(track.error_message, None);
@@ -227,7 +243,7 @@ mod tests {
     fn update_status_stores_error_message() {
         let conn = open_mem();
         insert_track(&conn, &sample_track("t3")).unwrap();
-        update_status(&conn, "t3", "status_download", "error", Some("network failure")).unwrap();
+        update_status(&conn, "t3", StatusField::Download, "error", Some("network failure")).unwrap();
         let track = get_track(&conn, "t3").unwrap().unwrap();
         assert_eq!(track.status_download, "error");
         assert_eq!(track.error_message.as_deref(), Some("network failure"));
