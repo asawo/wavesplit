@@ -1,3 +1,4 @@
+use crate::constants::{DEMUCS_MODEL, STEM_NAMES};
 use std::path::Path;
 use std::process::Command;
 
@@ -26,7 +27,7 @@ pub fn separate(
         let output = Command::new(demucs_bin)
             .args([
                 "--name",
-                "htdemucs",
+                DEMUCS_MODEL,
                 "-o",
                 tmp.to_str().ok_or("invalid tmp path")?,
                 source_wav.to_str().ok_or("invalid source_wav path")?,
@@ -45,10 +46,10 @@ pub fn separate(
             .and_then(|s| s.to_str())
             .ok_or("invalid source filename")?;
 
-        let demucs_out = tmp.join("htdemucs").join(source_stem);
+        let demucs_out = tmp.join(DEMUCS_MODEL).join(source_stem);
         std::fs::create_dir_all(stems_dir).map_err(|e| format!("mkdir stems_dir: {e}"))?;
 
-        for stem_name in &["bass", "drums", "vocals", "other"] {
+        for stem_name in STEM_NAMES {
             let src = demucs_out.join(format!("{stem_name}.wav"));
             let dst = stems_dir.join(format!("{stem_name}.wav"));
             std::fs::rename(&src, &dst)

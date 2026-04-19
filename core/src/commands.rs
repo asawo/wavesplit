@@ -6,6 +6,7 @@ use tauri::AppHandle;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
+use crate::constants::STEM_NAMES;
 use crate::db::{self, Track};
 use crate::paths;
 use crate::pipeline::{self, Source};
@@ -256,7 +257,7 @@ pub fn export_stems(
         exported.push("source.wav".to_string());
     }
 
-    for stem in &["bass", "drums", "vocals", "other"] {
+    for stem in STEM_NAMES {
         let src = stems_dir.join(format!("{stem}.wav"));
         if src.exists() {
             let dst = dest.join(format!("{stem}.wav"));

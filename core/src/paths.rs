@@ -57,8 +57,8 @@ mod tests {
     #[test]
     fn stem_filenames_are_under_stems_dir() {
         let base = stems_dir(Path::new(DATA), "abc");
-        for name in ["vocals.wav", "drums.wav", "bass.wav", "other.wav"] {
-            assert_eq!(base.join(name).parent().unwrap(), base);
+        for stem in crate::constants::STEM_NAMES {
+            assert_eq!(base.join(format!("{stem}.wav")).parent().unwrap(), base);
         }
     }
 }
