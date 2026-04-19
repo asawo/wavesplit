@@ -2,6 +2,38 @@ use rusqlite::{Connection, Result, params};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
+pub enum Stage {
+    Download,
+    Stems,
+    Analysis,
+}
+
+impl Stage {
+    fn column(&self) -> &'static str {
+        match self {
+            Self::Download => "status_download",
+            Self::Stems => "status_stems",
+            Self::Analysis => "status_analysis",
+        }
+    }
+}
+
+pub enum StageStatus {
+    Pending,
+    Done,
+    Error,
+}
+
+impl StageStatus {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Pending => "pending",
+            Self::Done => "done",
+            Self::Error => "error",
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Track {
     pub id: String,
@@ -88,15 +120,15 @@ pub fn list_tracks(conn: &Connection) -> Result<Vec<Track>> {
 pub fn update_status(
     conn: &Connection,
     id: &str,
-    field: &str,
-    status: &str,
+    field: Stage,
+    status: StageStatus,
     error: Option<&str>,
 ) -> Result<()> {
     let sql = format!(
         "UPDATE tracks SET {} = ?1, error_message = ?2 WHERE id = ?3",
-        field
+        field.column()
     );
-    conn.execute(&sql, params![status, error, id])?;
+    conn.execute(&sql, params![status.as_str(), error, id])?;
     Ok(())
 }
 
@@ -147,20 +179,21 @@ pub fn get_track(conn: &Connection, id: &str) -> Result<Option<Track>> {
 }
 
 pub fn reset_for_retry(conn: &Connection, id: &str, reset_download: bool, reset_stems: bool) -> Result<()> {
+    let pending = StageStatus::Pending.as_str();
     if reset_download {
         conn.execute(
-            "UPDATE tracks SET status_download = 'pending', status_stems = 'pending', status_analysis = 'pending', error_message = NULL WHERE id = ?1",
-            params![id],
+            "UPDATE tracks SET status_download = ?1, status_stems = ?1, status_analysis = ?1, error_message = NULL WHERE id = ?2",
+            params![pending, id],
         )?;
     } else if reset_stems {
         conn.execute(
-            "UPDATE tracks SET status_stems = 'pending', status_analysis = 'pending', error_message = NULL WHERE id = ?1",
-            params![id],
+            "UPDATE tracks SET status_stems = ?1, status_analysis = ?1, error_message = NULL WHERE id = ?2",
+            params![pending, id],
         )?;
     } else {
         conn.execute(
-            "UPDATE tracks SET status_analysis = 'pending', error_message = NULL WHERE id = ?1",
-            params![id],
+            "UPDATE tracks SET status_analysis = ?1, error_message = NULL WHERE id = ?2",
+            params![pending, id],
         )?;
     }
     Ok(())
@@ -217,7 +250,7 @@ mod tests {
     fn update_status_sets_done() {
         let conn = open_mem();
         insert_track(&conn, &sample_track("t2")).unwrap();
-        update_status(&conn, "t2", "status_download", "done", None).unwrap();
+        update_status(&conn, "t2", Stage::Download, StageStatus::Done, None).unwrap();
         let track = get_track(&conn, "t2").unwrap().unwrap();
         assert_eq!(track.status_download, "done");
         assert_eq!(track.error_message, None);
@@ -227,7 +260,7 @@ mod tests {
     fn update_status_stores_error_message() {
         let conn = open_mem();
         insert_track(&conn, &sample_track("t3")).unwrap();
-        update_status(&conn, "t3", "status_download", "error", Some("network failure")).unwrap();
+        update_status(&conn, "t3", Stage::Download, StageStatus::Error, Some("network failure")).unwrap();
         let track = get_track(&conn, "t3").unwrap().unwrap();
         assert_eq!(track.status_download, "error");
         assert_eq!(track.error_message.as_deref(), Some("network failure"));
