@@ -162,6 +162,7 @@
     </div>
   {/if}
 
+  <div class="tracks-scroll">
   {#if editError}
     <p class="export-error">{editError} <button class="dismiss-error" onclick={() => editError = ''}>×</button></p>
   {/if}
@@ -255,19 +256,31 @@
       </div>
     </div>
   {/each}
+  </div>
 </div>
 
 <style>
   .track-list {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    flex: 1;
+    min-height: 0;
   }
 
   .toolbar {
     display: flex;
     gap: 6px;
-    margin-bottom: 6px;
+    margin-bottom: 8px;
+    flex-shrink: 0;
+  }
+
+  .tracks-scroll {
+    flex: 1;
+    overflow-y: auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
   }
 
   .filter-input {

@@ -204,7 +204,8 @@
 
   .list-section {
     flex: 1;
-    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
     min-height: 0;
   }
 
