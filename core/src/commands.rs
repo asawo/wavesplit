@@ -63,6 +63,12 @@ fn spawn_pipeline(
 }
 
 #[derive(serde::Serialize)]
+pub struct AddTrackResult {
+    pub id: String,
+    pub duplicate: bool,
+}
+
+#[derive(serde::Serialize)]
 pub struct StemPaths {
     pub vocals: String,
     pub drums: String,
@@ -87,11 +93,18 @@ pub async fn add_track_youtube(
     url: String,
     app: AppHandle,
     state: tauri::State<'_, AppState>,
-) -> Result<String, String> {
+) -> Result<AddTrackResult, String> {
     validate_youtube_url(&url)?;
+    {
+        let conn = state.db.lock().map_err(|_| "database unavailable".to_string())?;
+        if let Some(existing) = db::find_by_url(&conn, &url).map_err(|e| e.to_string())? {
+            return Ok(AddTrackResult { id: existing.id, duplicate: true });
+        }
+    }
     let title = pipeline::download::youtube_title(&url)
         .unwrap_or_else(|| url.clone());
-    add_track(Source::Youtube(url.clone()), title, Some(url), None, app, state).await
+    let id = add_track(Source::Youtube(url.clone()), title, Some(url), None, app, state).await?;
+    Ok(AddTrackResult { id, duplicate: false })
 }
 
 #[tauri::command]
@@ -99,10 +112,17 @@ pub async fn add_track_local(
     path: String,
     app: AppHandle,
     state: tauri::State<'_, AppState>,
-) -> Result<String, String> {
+) -> Result<AddTrackResult, String> {
+    {
+        let conn = state.db.lock().map_err(|_| "database unavailable".to_string())?;
+        if let Some(existing) = db::find_by_path(&conn, &path).map_err(|e| e.to_string())? {
+            return Ok(AddTrackResult { id: existing.id, duplicate: true });
+        }
+    }
     let src = std::path::PathBuf::from(&path);
     let title = pipeline::download::local_title(&src);
-    add_track(Source::Local(src), title, None, Some(path), app, state).await
+    let id = add_track(Source::Local(src), title, None, Some(path), app, state).await?;
+    Ok(AddTrackResult { id, duplicate: false })
 }
 
 async fn add_track(

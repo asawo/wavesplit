@@ -32,8 +32,9 @@
     url = ''
     onStarted(pendingUrl)
     try {
-      const id = await invoke('add_track_youtube', { url: pendingUrl })
-      onAdded(id)
+      const result = await invoke('add_track_youtube', { url: pendingUrl })
+      if (result.duplicate) error = 'This track is already in your library'
+      onAdded(result.id)
     } catch (e) {
       error = String(e)
       onAdded(null)
@@ -53,8 +54,9 @@
     // Normalize backslashes for Windows paths (display only — `selected` is passed as-is to the backend)
     onStarted(selected.replace(/\\/g, '/').split('/').pop() ?? 'Local file')
     try {
-      const id = await invoke('add_track_local', { path: selected })
-      onAdded(id)
+      const result = await invoke('add_track_local', { path: selected })
+      if (result.duplicate) error = 'This track is already in your library'
+      onAdded(result.id)
     } catch (e) {
       error = String(e)
       onAdded(null)
