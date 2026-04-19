@@ -1,149 +1,163 @@
 <script>
-  import { invoke, convertFileSrc } from '@tauri-apps/api/core'
-  import { open as openDialog } from '@tauri-apps/plugin-dialog'
-  import { onDestroy } from 'svelte'
-  import { formatTime, hashStr, makeWaveformBars, extractWaveform, waveformGradientId } from './playback.helpers.js'
+  import { invoke, convertFileSrc } from "@tauri-apps/api/core";
+  import { open as openDialog } from "@tauri-apps/plugin-dialog";
+  import { onDestroy } from "svelte";
+  import {
+    formatTime,
+    hashStr,
+    makeWaveformBars,
+    extractWaveform,
+    waveformGradientId,
+  } from "./playback.helpers.js";
 
-  let { track, active, onBack } = $props()
+  let { track, active, onBack } = $props();
 
   const STEMS = [
-    { key: 'vocals', label: 'Vocals', color: '#4caf72' },
-    { key: 'drums',  label: 'Drums',  color: '#4a9eff' },
-    { key: 'bass',   label: 'Bass',   color: '#f0a030' },
-    { key: 'other',  label: 'Other',  color: '#e06080' },
-  ]
+    { key: "vocals", label: "Vocals", color: "#4caf72" },
+    { key: "drums", label: "Drums", color: "#4a9eff" },
+    { key: "bass", label: "Bass", color: "#f0a030" },
+    { key: "other", label: "Other", color: "#e06080" },
+  ];
 
   // ── Transport ──────────────────────────────────────────────
-  let playing = $state(false)
-  let playhead = $state(0)   // 0–1 fraction
+  let playing = $state(false);
+  let playhead = $state(0); // 0–1 fraction
 
   // ── Stem mixer ─────────────────────────────────────────────
   let stemState = $state(
-    Object.fromEntries(STEMS.map(s => [s.key, { muted: false, soloed: false, volume: 1 }]))
-  )
+    Object.fromEntries(
+      STEMS.map((s) => [s.key, { muted: false, soloed: false, volume: 1 }]),
+    ),
+  );
 
   function toggleMute(key) {
-    stemState[key] = { ...stemState[key], muted: !stemState[key].muted }
+    stemState[key] = { ...stemState[key], muted: !stemState[key].muted };
   }
 
   function toggleSolo(key) {
-    const wasSoloed = stemState[key].soloed
-    for (const k of Object.keys(stemState)) stemState[k] = { ...stemState[k], soloed: false }
-    if (!wasSoloed) stemState[key] = { ...stemState[key], soloed: true }
+    const wasSoloed = stemState[key].soloed;
+    for (const k of Object.keys(stemState))
+      stemState[k] = { ...stemState[k], soloed: false };
+    if (!wasSoloed) stemState[key] = { ...stemState[key], soloed: true };
   }
 
-  let anySoloed = $derived(Object.values(stemState).some(s => s.soloed))
+  let anySoloed = $derived(Object.values(stemState).some((s) => s.soloed));
 
   function isMuted(key) {
-    return anySoloed ? !stemState[key].soloed : stemState[key].muted
+    return anySoloed ? !stemState[key].soloed : stemState[key].muted;
   }
 
   // ── Audio engine ───────────────────────────────────────────
-  let audioCtx = null
-  let gainNodes = {}       // key → GainNode
-  let sourceNodes = {}     // key → AudioBufferSourceNode (live while playing)
-  let buffers = $state({}) // key → AudioBuffer
-  let waveformData = $state({}) // key → number[120] (RMS, 0–1 normalised)
-  let loading = $state(false)
-  let loadError = $state(null)
-  let duration = $state(0) // seconds (from decoded audio)
-  let startOffset = 0      // track pos (s) where last play() started from
-  let startTime = 0        // audioCtx.currentTime when last play() started
-  let rafId = null
-  let loadedTrackId = null
+  let audioCtx = null;
+  let gainNodes = {}; // key → GainNode
+  let sourceNodes = {}; // key → AudioBufferSourceNode (live while playing)
+  let buffers = $state({}); // key → AudioBuffer
+  let waveformData = $state({}); // key → number[120] (RMS, 0–1 normalised)
+  let loading = $state(false);
+  let loadError = $state(null);
+  let duration = $state(0); // seconds (from decoded audio)
+  let startOffset = 0; // track pos (s) where last play() started from
+  let startTime = 0; // audioCtx.currentTime when last play() started
+  let rafId = null;
+  let loadedTrackId = null;
 
   // Time display — prefer real decoded duration, fall back to DB
-  let displayDuration = $derived(duration > 0 ? duration : (track.duration_ms ?? 0) / 1000)
-  let elapsedSeconds = $derived(playhead * displayDuration)
+  let displayDuration = $derived(
+    duration > 0 ? duration : (track.duration_ms ?? 0) / 1000,
+  );
+  let elapsedSeconds = $derived(playhead * displayDuration);
 
-  const masterGradId = $derived(waveformGradientId(track.id, 'master'))
+  const masterGradId = $derived(waveformGradientId(track.id, "master"));
 
   // Master waveform = RMS average of all loaded stems
-  let masterWaveform = $derived((() => {
-    const loaded = STEMS.map(s => waveformData[s.key]).filter(Boolean)
-    if (!loaded.length) return null
-    const avg = new Array(120).fill(0)
-    for (const w of loaded) {
-      for (let i = 0; i < 120; i++) avg[i] += w[i] / loaded.length
-    }
-    return avg
-  })())
+  let masterWaveform = $derived(
+    (() => {
+      const loaded = STEMS.map((s) => waveformData[s.key]).filter(Boolean);
+      if (!loaded.length) return null;
+      const avg = new Array(120).fill(0);
+      for (const w of loaded) {
+        for (let i = 0; i < 120; i++) avg[i] += w[i] / loaded.length;
+      }
+      return avg;
+    })(),
+  );
 
   function applyGains() {
     for (const stem of STEMS) {
       // Read reactive state first so $effect always tracks these as dependencies,
       // even before gain nodes are created (early-return would skip the reads).
-      const s = stemState[stem.key]
-      const muted = anySoloed ? !s.soloed : s.muted
-      const target = muted ? 0 : s.volume
-      const node = gainNodes[stem.key]
-      if (!node) continue
+      const s = stemState[stem.key];
+      const muted = anySoloed ? !s.soloed : s.muted;
+      const target = muted ? 0 : s.volume;
+      const node = gainNodes[stem.key];
+      if (!node) continue;
       if (audioCtx) {
-        node.gain.setTargetAtTime(target, audioCtx.currentTime, 0.015)
+        node.gain.setTargetAtTime(target, audioCtx.currentTime, 0.015);
       } else {
-        node.gain.value = target
+        node.gain.value = target;
       }
     }
   }
 
   async function loadAudio() {
-    const targetId = track.id
-    if (loadedTrackId === targetId) return
-    loadedTrackId = targetId
+    const targetId = track.id;
+    if (loadedTrackId === targetId) return;
+    loadedTrackId = targetId;
 
-    cancelTick()
-    stopSources()
+    cancelTick();
+    stopSources();
 
-    loading = true
-    loadError = null
-    playing = false
-    startOffset = 0
-    playhead = 0
-    buffers = {}
-    waveformData = {}
+    loading = true;
+    loadError = null;
+    playing = false;
+    startOffset = 0;
+    playhead = 0;
+    buffers = {};
+    waveformData = {};
 
     try {
       if (!audioCtx) {
-        audioCtx = new AudioContext()
-        audioCtx.addEventListener('statechange', () => {
-          if (playing && audioCtx.state === 'suspended') audioCtx.resume()
-        })
+        audioCtx = new AudioContext();
+        audioCtx.addEventListener("statechange", () => {
+          if (playing && audioCtx.state === "suspended") audioCtx.resume();
+        });
         for (const stem of STEMS) {
-          gainNodes[stem.key] = audioCtx.createGain()
-          gainNodes[stem.key].connect(audioCtx.destination)
+          gainNodes[stem.key] = audioCtx.createGain();
+          gainNodes[stem.key].connect(audioCtx.destination);
         }
-        applyGains()
+        applyGains();
       }
 
-      const paths = await invoke('get_stem_paths', { trackId: targetId })
+      const paths = await invoke("get_stem_paths", { trackId: targetId });
 
-      const results = await Promise.all(STEMS.map(async ({ key }) => {
-        const url = convertFileSrc(paths[key])
-        const resp = await fetch(url)
-        if (!resp.ok) throw new Error(`HTTP ${resp.status} for ${key}`)
-        const ab = await resp.arrayBuffer()
-        const buf = await audioCtx.decodeAudioData(ab)
-        return [key, buf]
-      }))
+      const results = await Promise.all(
+        STEMS.map(async ({ key }) => {
+          const url = convertFileSrc(paths[key]);
+          const resp = await fetch(url);
+          if (!resp.ok) throw new Error(`HTTP ${resp.status} for ${key}`);
+          const ab = await resp.arrayBuffer();
+          const buf = await audioCtx.decodeAudioData(ab);
+          return [key, buf];
+        }),
+      );
 
       // Discard results if the user switched tracks while we were loading
-      if (loadedTrackId !== targetId) return
+      if (loadedTrackId !== targetId) return;
 
-      const newBuffers = Object.fromEntries(results)
-      buffers = newBuffers
+      const newBuffers = Object.fromEntries(results);
+      buffers = newBuffers;
       waveformData = Object.fromEntries(
-        results.map(([key, buf]) => [key, extractWaveform(buf, 120)])
-      )
-      duration = Object.values(newBuffers)[0]?.duration ?? 0
-
+        results.map(([key, buf]) => [key, extractWaveform(buf, 120)]),
+      );
+      duration = Object.values(newBuffers)[0]?.duration ?? 0;
     } catch (e) {
       if (loadedTrackId === targetId) {
-        loadError = e.message ?? String(e)
-        loadedTrackId = null  // allow retry on next open
+        loadError = e.message ?? String(e);
+        loadedTrackId = null; // allow retry on next open
       }
     } finally {
       if (loadedTrackId === targetId || loadedTrackId === null) {
-        loading = false
+        loading = false;
       }
     }
   }
@@ -151,135 +165,155 @@
   // ── Playback control ───────────────────────────────────────
 
   async function startPlayback() {
-    if (!audioCtx || Object.keys(buffers).length === 0) return
-    if (audioCtx.state !== 'running') await audioCtx.resume()
-    const offset = Math.max(0, Math.min(startOffset, duration - 0.01))
-    startTime = audioCtx.currentTime
+    if (!audioCtx || Object.keys(buffers).length === 0) return;
+    if (audioCtx.state !== "running") await audioCtx.resume();
+    const offset = Math.max(0, Math.min(startOffset, duration - 0.01));
+    startTime = audioCtx.currentTime;
     for (const { key } of STEMS) {
-      const buf = buffers[key]
-      if (!buf) continue
-      const src = audioCtx.createBufferSource()
-      src.buffer = buf
-      src.connect(gainNodes[key])
-      src.start(0, offset)
-      sourceNodes[key] = src
+      const buf = buffers[key];
+      if (!buf) continue;
+      const src = audioCtx.createBufferSource();
+      src.buffer = buf;
+      src.connect(gainNodes[key]);
+      src.start(0, offset);
+      sourceNodes[key] = src;
     }
-    schedTick()
+    schedTick();
   }
 
   function stopSources() {
     for (const src of Object.values(sourceNodes)) {
-      try { src.stop() } catch (_) {}
-      try { src.disconnect() } catch (_) {}
+      try {
+        src.stop();
+      } catch (_) {}
+      try {
+        src.disconnect();
+      } catch (_) {}
     }
-    sourceNodes = {}
+    sourceNodes = {};
   }
 
   function pausePlayback() {
     if (audioCtx && Object.keys(sourceNodes).length > 0) {
-      startOffset = Math.min(startOffset + (audioCtx.currentTime - startTime), duration)
+      startOffset = Math.min(
+        startOffset + (audioCtx.currentTime - startTime),
+        duration,
+      );
     }
-    stopSources()
-    cancelTick()
+    stopSources();
+    cancelTick();
   }
 
   async function handlePlayPause() {
-    if (!audioCtx || Object.keys(buffers).length === 0) return
+    if (!audioCtx || Object.keys(buffers).length === 0) return;
     if (playing) {
-      pausePlayback()
-      playing = false
+      pausePlayback();
+      playing = false;
     } else {
-      await startPlayback()
-      playing = true
+      await startPlayback();
+      playing = true;
     }
   }
 
   async function seek(fraction) {
-    const safeFraction = Math.max(0, Math.min(1, fraction))
-    const was = playing
-    if (was) { stopSources(); cancelTick(); playing = false }
-    startOffset = safeFraction * duration
-    playhead = safeFraction
+    const safeFraction = Math.max(0, Math.min(1, fraction));
+    const was = playing;
     if (was) {
-      await startPlayback()
-      playing = true
+      stopSources();
+      cancelTick();
+      playing = false;
+    }
+    startOffset = safeFraction * duration;
+    playhead = safeFraction;
+    if (was) {
+      await startPlayback();
+      playing = true;
     }
   }
 
   function seekToClick(e) {
-    const rect = e.currentTarget.getBoundingClientRect()
-    seek((e.clientX - rect.left) / rect.width)
+    const rect = e.currentTarget.getBoundingClientRect();
+    seek((e.clientX - rect.left) / rect.width);
   }
 
   function getCurrentPos() {
-    if (!playing || !audioCtx) return startOffset
-    return startOffset + (audioCtx.currentTime - startTime)
+    if (!playing || !audioCtx) return startOffset;
+    return startOffset + (audioCtx.currentTime - startTime);
   }
 
   function skipBy(seconds) {
-    seek((getCurrentPos() + seconds) / Math.max(duration, 0.001))
+    seek((getCurrentPos() + seconds) / Math.max(duration, 0.001));
   }
 
   function schedTick() {
-    cancelTick()
-    rafId = requestAnimationFrame(tick)
+    cancelTick();
+    rafId = requestAnimationFrame(tick);
   }
 
   function cancelTick() {
-    if (rafId) { cancelAnimationFrame(rafId); rafId = null }
+    if (rafId) {
+      cancelAnimationFrame(rafId);
+      rafId = null;
+    }
   }
 
   function tick() {
-    if (!playing || !audioCtx) return
-    const pos = startOffset + (audioCtx.currentTime - startTime)
+    if (!playing || !audioCtx) return;
+    const pos = startOffset + (audioCtx.currentTime - startTime);
     if (pos >= duration) {
-      stopSources()
-      playing = false
-      startOffset = 0
-      playhead = 0
-      return
+      stopSources();
+      playing = false;
+      startOffset = 0;
+      playhead = 0;
+      return;
     }
-    playhead = pos / duration
-    rafId = requestAnimationFrame(tick)
+    playhead = pos / duration;
+    rafId = requestAnimationFrame(tick);
   }
 
   // Sync gain nodes whenever stem state or solo changes
   $effect(() => {
-    applyGains()
-  })
+    applyGains();
+  });
 
   // Pause when navigating back to library
   $effect(() => {
-    if (!active && playing) { pausePlayback(); playing = false }
-  })
+    if (!active && playing) {
+      pausePlayback();
+      playing = false;
+    }
+  });
 
   // Reload whenever the selected track changes
   $effect(() => {
-    const id = track.id  // reactive — re-runs when track changes
-    if (id !== loadedTrackId) loadAudio()
-  })
+    const id = track.id; // reactive — re-runs when track changes
+    if (id !== loadedTrackId) loadAudio();
+  });
 
   onDestroy(() => {
-    cancelTick()
-    stopSources()
-    audioCtx?.close()
-  })
+    cancelTick();
+    stopSources();
+    audioCtx?.close();
+  });
 
   // ── Export ─────────────────────────────────────────────────
-  let exportingId = $state(null)
-  let exportError = $state('')
+  let exportingId = $state(null);
+  let exportError = $state("");
 
   async function exportStems() {
-    const dest = await openDialog({ directory: true, title: 'Export stems to…' })
-    if (!dest) return
-    exportingId = track.id
-    exportError = ''
+    const dest = await openDialog({
+      directory: true,
+      title: "Export stems to…",
+    });
+    if (!dest) return;
+    exportingId = track.id;
+    exportError = "";
     try {
-      await invoke('export_stems', { trackId: track.id, destDir: dest })
+      await invoke("export_stems", { trackId: track.id, destDir: dest });
     } catch (e) {
-      exportError = String(e)
+      exportError = String(e);
     } finally {
-      exportingId = null
+      exportingId = null;
     }
   }
 </script>
@@ -300,21 +334,37 @@
     <p class="section-label">Master</p>
     <div class="master-panel">
       <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions a11y_no_noninteractive_element_interactions -->
-      <div class="waveform-wrap" role="presentation" onclick={seekToClick}
-           style="opacity:{loading ? 0.4 : 1}; transition:opacity 0.3s">
+      <div
+        class="waveform-wrap"
+        role="presentation"
+        onclick={seekToClick}
+        style="opacity:{loading ? 0.4 : 1}; transition:opacity 0.3s"
+      >
         <svg class="waveform" viewBox="0 0 400 60" preserveAspectRatio="none">
           <defs>
-            <linearGradient id={masterGradId}
-                            gradientUnits="userSpaceOnUse" x1="0" x2="400" y1="0" y2="0">
+            <linearGradient
+              id={masterGradId}
+              gradientUnits="userSpaceOnUse"
+              x1="0"
+              x2="400"
+              y1="0"
+              y2="0"
+            >
               <stop offset="{playhead * 100}%" stop-color="#4caf72" />
               <stop offset="{playhead * 100}%" stop-color="#383838" />
             </linearGradient>
           </defs>
-          {#each (masterWaveform ?? makeWaveformBars(track.id, 120)) as h, i}
+          {#each masterWaveform ?? makeWaveformBars(track.id, 120) as h, i}
             {@const x = i * (400 / 120)}
             {@const bh = h * 54}
-            <rect x={x} y={(60 - bh) / 2} width="2.2" height={bh} rx="1"
-                  fill="url(#{masterGradId})" />
+            <rect
+              {x}
+              y={(60 - bh) / 2}
+              width="2.2"
+              height={bh}
+              rx="1"
+              fill="url(#{masterGradId})"
+            />
           {/each}
         </svg>
         <div class="playhead" style="left:{playhead * 100}%">
@@ -330,16 +380,26 @@
 
   <!-- ── Transport ── -->
   <div class="transport">
-    <button class="transport-btn" title="Skip to start" onclick={() => seek(0)}>‹</button>
-    <button class="transport-btn" title="Rewind 10s"    onclick={() => skipBy(-10)}>‹‹</button>
-    <button class="transport-btn play-btn"
-            title={playing ? 'Pause' : 'Play'}
-            disabled={loading || !!loadError}
-            onclick={handlePlayPause}>
-      {playing ? '⏸' : '▶'}
+    <button class="transport-btn" title="Skip to start" onclick={() => seek(0)}
+      >‹</button
+    >
+    <button class="transport-btn" title="Rewind 10s" onclick={() => skipBy(-10)}
+      >‹‹</button
+    >
+    <button
+      class="transport-btn play-btn"
+      title={playing ? "Pause" : "Play"}
+      disabled={loading || !!loadError}
+      onclick={handlePlayPause}
+    >
+      {playing ? "⏸" : "▶"}
     </button>
-    <button class="transport-btn" title="Forward 10s"  onclick={() => skipBy(10)}>››</button>
-    <button class="transport-btn" title="Skip to end"  onclick={() => seek(1)}>›</button>
+    <button class="transport-btn" title="Forward 10s" onclick={() => skipBy(10)}
+      >››</button
+    >
+    <button class="transport-btn" title="Skip to end" onclick={() => seek(1)}
+      >›</button
+    >
   </div>
 
   <!-- ── Stems ── -->
@@ -355,35 +415,82 @@
       {@const muted = isMuted(stem.key)}
       {@const stemGradId = waveformGradientId(track.id, stem.key)}
       <div class="stem-row">
-        <span class="stem-label" style="color:{muted ? 'var(--fg-muted)' : stem.color}">{stem.label}</span>
-        <div class="stem-waveform-wrap" style="opacity:{loading ? 0.35 : 1}; transition:opacity 0.3s">
-          <svg class="stem-waveform" viewBox="0 0 400 28" preserveAspectRatio="none">
+        <span
+          class="stem-label"
+          style="color:{muted ? 'var(--fg-muted)' : stem.color}"
+          >{stem.label}</span
+        >
+        <div
+          class="stem-waveform-wrap"
+          style="opacity:{loading ? 0.35 : 1}; transition:opacity 0.3s"
+        >
+          <svg
+            class="stem-waveform"
+            viewBox="0 0 400 28"
+            preserveAspectRatio="none"
+          >
             <defs>
-              <linearGradient id={stemGradId}
-                              gradientUnits="userSpaceOnUse" x1="0" x2="400" y1="0" y2="0">
-                <stop offset="{playhead * 100}%" stop-color={muted ? '#2e2e2e' : stem.color} />
-                <stop offset="{playhead * 100}%" stop-color={muted ? '#2e2e2e' : '#383838'} />
+              <linearGradient
+                id={stemGradId}
+                gradientUnits="userSpaceOnUse"
+                x1="0"
+                x2="400"
+                y1="0"
+                y2="0"
+              >
+                <stop
+                  offset="{playhead * 100}%"
+                  stop-color={muted ? "#2e2e2e" : stem.color}
+                />
+                <stop
+                  offset="{playhead * 100}%"
+                  stop-color={muted ? "#2e2e2e" : "#383838"}
+                />
               </linearGradient>
             </defs>
-            {#each (waveformData[stem.key] ?? makeWaveformBars(track.id + stem.key, 120)) as h, i}
+            {#each waveformData[stem.key] ?? makeWaveformBars(track.id + stem.key, 120) as h, i}
               {@const x = i * (400 / 120)}
               {@const bh = h * 24}
-              <rect x={x} y={(28 - bh) / 2} width="2.2" height={bh} rx="0.5"
-                    fill="url(#{stemGradId})"
-                    opacity={muted ? 0.5 : 1} />
+              <rect
+                {x}
+                y={(28 - bh) / 2}
+                width="2.2"
+                height={bh}
+                rx="0.5"
+                fill="url(#{stemGradId})"
+                opacity={muted ? 0.5 : 1}
+              />
             {/each}
           </svg>
           <div class="stem-playhead" style="left:{playhead * 100}%"></div>
         </div>
-        <button class="stem-btn" class:active={state.muted && !anySoloed}
-                onclick={() => toggleMute(stem.key)} title="Mute">M</button>
-        <button class="stem-btn" class:active={state.soloed}
-                onclick={() => toggleSolo(stem.key)} title="Solo">S</button>
-        <input class="vol-slider" type="range" min="0" max="1" step="0.01"
-               value={state.volume}
-               aria-label="{stem.label} volume"
-               style="accent-color:{stem.color}"
-               oninput={(e) => stemState[stem.key] = { ...state, volume: +e.target.value }} />
+        <button
+          class="stem-btn"
+          class:active={state.muted && !anySoloed}
+          onclick={() => toggleMute(stem.key)}
+          title="Mute">M</button
+        >
+        <button
+          class="stem-btn"
+          class:active={state.soloed}
+          onclick={() => toggleSolo(stem.key)}
+          title="Solo">S</button
+        >
+        <input
+          class="vol-slider"
+          type="range"
+          min="0"
+          max="1"
+          step="0.01"
+          value={state.volume}
+          aria-label="{stem.label} volume"
+          style="accent-color:{stem.color}"
+          oninput={(e) =>
+            (stemState[stem.key] = {
+              ...state,
+              volume: +e.currentTarget.value,
+            })}
+        />
       </div>
     {/each}
   </div>
@@ -391,12 +498,14 @@
   <!-- ── Footer ── -->
   <div class="playback-footer">
     {#if exportError}
-      <span class="export-error">{exportError}
-        <button class="dismiss-btn" onclick={() => exportError = ''}>×</button>
+      <span class="export-error"
+        >{exportError}
+        <button class="dismiss-btn" onclick={() => (exportError = "")}>×</button
+        >
       </span>
     {/if}
     <button class="export-btn" onclick={exportStems} disabled={!!exportingId}>
-      {exportingId ? 'Exporting…' : '↓ Export stems'}
+      {exportingId ? "Exporting…" : "↓ Export stems"}
     </button>
   </div>
 </div>
@@ -464,7 +573,9 @@
     max-width: 260px;
   }
 
-  .header-spacer { /* balances back button */ }
+  .header-spacer {
+    flex: 1; /* balances back button */
+  }
 
   /* ── Master waveform ── */
   .master-section {

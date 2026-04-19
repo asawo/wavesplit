@@ -12,6 +12,9 @@ dist
 dist-ssr
 *.local
 
+# Claude Code session data
+.claude/
+
 # Editor directories and files
 .vscode
 .idea

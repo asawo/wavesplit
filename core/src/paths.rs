@@ -16,7 +16,6 @@ pub fn source_wav(data_dir: &Path, id: &str) -> PathBuf {
     track_dir(data_dir, id).join("source.wav")
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -25,22 +24,34 @@ mod tests {
 
     #[test]
     fn track_dir_is_data_tracks_id() {
-        assert_eq!(track_dir(Path::new(DATA), "abc"), Path::new("/data/tracks/abc"));
+        assert_eq!(
+            track_dir(Path::new(DATA), "abc"),
+            Path::new("/data/tracks/abc")
+        );
     }
 
     #[test]
     fn stems_dir_is_under_track_dir() {
-        assert_eq!(stems_dir(Path::new(DATA), "abc"), Path::new("/data/tracks/abc/stems"));
+        assert_eq!(
+            stems_dir(Path::new(DATA), "abc"),
+            Path::new("/data/tracks/abc/stems")
+        );
     }
 
     #[test]
     fn analysis_dir_is_under_track_dir() {
-        assert_eq!(analysis_dir(Path::new(DATA), "abc"), Path::new("/data/tracks/abc/analysis"));
+        assert_eq!(
+            analysis_dir(Path::new(DATA), "abc"),
+            Path::new("/data/tracks/abc/analysis")
+        );
     }
 
     #[test]
     fn source_wav_is_in_track_dir() {
-        assert_eq!(source_wav(Path::new(DATA), "abc"), Path::new("/data/tracks/abc/source.wav"));
+        assert_eq!(
+            source_wav(Path::new(DATA), "abc"),
+            Path::new("/data/tracks/abc/source.wav")
+        );
     }
 
     #[test]

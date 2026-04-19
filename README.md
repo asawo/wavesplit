@@ -126,13 +126,19 @@ just dev
 Other commands:
 
 ```sh
-just build       # Build release binary + installer
-just check       # Check Rust without building
-just test        # Run Rust tests
-just fmt         # Format Rust code
-just lint        # Clippy (warnings as errors)
-just open-data   # Open app data directory (macOS)
-just reset-data  # Wipe all app data and tracks (destructive)
+just build          # Build release binary + installer
+just check          # Check Rust without building
+just test           # Run Rust tests
+just fmt            # Format Rust code
+just fmt-check      # Check Rust formatting without modifying files
+just fix            # Auto-format Rust + frontend
+just lint           # Clippy (warnings as errors)
+just check-ui       # svelte-check (Svelte component type checking)
+just lint-ui        # Prettier formatting check
+just ci             # Run all CI checks locally (fmt + clippy + test + build + svelte-check + prettier)
+just install-hooks  # Install git pre-commit hook (run once after cloning)
+just open-data      # Open app data directory (macOS)
+just reset-data     # Wipe all app data and tracks (destructive)
 ```
 
 ---

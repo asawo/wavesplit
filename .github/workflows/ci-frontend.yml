@@ -40,3 +40,9 @@ jobs:
 
       - name: Test
         run: pnpm test
+
+      - name: Svelte check
+        run: pnpm check
+
+      - name: Prettier check
+        run: pnpm format:check

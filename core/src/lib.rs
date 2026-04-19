@@ -4,9 +4,9 @@ mod paths;
 mod pipeline;
 mod setup;
 
+use rusqlite::Connection;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use rusqlite::Connection;
 use tauri::{AppHandle, Manager};
 use tokio_util::sync::CancellationToken;
 
@@ -22,7 +22,10 @@ pub struct AppState {
 
 #[tauri::command]
 fn list_tracks(state: tauri::State<AppState>) -> Result<Vec<db::Track>, String> {
-    let conn = state.db.lock().map_err(|_| "database unavailable".to_string())?;
+    let conn = state
+        .db
+        .lock()
+        .map_err(|_| "database unavailable".to_string())?;
     db::list_tracks(&conn).map_err(|e| e.to_string())
 }
 
@@ -34,7 +37,10 @@ fn delete_track(id: String, state: tauri::State<AppState>) -> Result<(), String>
             token.cancel();
         }
     }
-    let conn = state.db.lock().map_err(|_| "database unavailable".to_string())?;
+    let conn = state
+        .db
+        .lock()
+        .map_err(|_| "database unavailable".to_string())?;
     db::delete_track(&conn, &id).map_err(|e| e.to_string())?;
     drop(conn);
     let track_dir = paths::track_dir(&state.data_dir, &id);
