@@ -151,6 +151,60 @@ pub fn mark_interrupted(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
+pub fn find_by_url(conn: &Connection, url: &str) -> Result<Option<Track>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, title, source_type, source_url, source_path, created_at, sort_order, duration_ms,
+                status_download, status_stems, status_analysis, error_message, export_path, artist
+         FROM tracks WHERE source_url = ?1",
+    )?;
+    let mut rows = stmt.query_map(params![url], |row| {
+        Ok(Track {
+            id: row.get(0)?,
+            title: row.get(1)?,
+            source_type: row.get(2)?,
+            source_url: row.get(3)?,
+            source_path: row.get(4)?,
+            created_at: row.get(5)?,
+            sort_order: row.get(6)?,
+            duration_ms: row.get(7)?,
+            status_download: row.get(8)?,
+            status_stems: row.get(9)?,
+            status_analysis: row.get(10)?,
+            error_message: row.get(11)?,
+            export_path: row.get(12)?,
+            artist: row.get(13)?,
+        })
+    })?;
+    rows.next().transpose()
+}
+
+pub fn find_by_path(conn: &Connection, path: &str) -> Result<Option<Track>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, title, source_type, source_url, source_path, created_at, sort_order, duration_ms,
+                status_download, status_stems, status_analysis, error_message, export_path, artist
+         FROM tracks WHERE source_path = ?1",
+    )?;
+    let mut rows = stmt.query_map(params![path], |row| {
+        Ok(Track {
+            id: row.get(0)?,
+            title: row.get(1)?,
+            source_type: row.get(2)?,
+            source_url: row.get(3)?,
+            source_path: row.get(4)?,
+            created_at: row.get(5)?,
+            sort_order: row.get(6)?,
+            duration_ms: row.get(7)?,
+            status_download: row.get(8)?,
+            status_stems: row.get(9)?,
+            status_analysis: row.get(10)?,
+            error_message: row.get(11)?,
+            export_path: row.get(12)?,
+            artist: row.get(13)?,
+        })
+    })?;
+    rows.next().transpose()
+}
+
 pub fn get_track(conn: &Connection, id: &str) -> Result<Option<Track>> {
     let mut stmt = conn.prepare(
         "SELECT id, title, source_type, source_url, source_path, created_at, sort_order, duration_ms,
@@ -353,6 +407,40 @@ mod tests {
         set_export_path(&conn, "t11", "/exports/t11").unwrap();
         let track = get_track(&conn, "t11").unwrap().unwrap();
         assert_eq!(track.export_path.as_deref(), Some("/exports/t11"));
+    }
+
+    #[test]
+    fn find_by_url_returns_existing_track() {
+        let conn = open_mem();
+        insert_track(&conn, &sample_track("t13")).unwrap();
+        let found = find_by_url(&conn, "https://example.com").unwrap();
+        assert!(found.is_some());
+        assert_eq!(found.unwrap().id, "t13");
+    }
+
+    #[test]
+    fn find_by_url_returns_none_for_unknown_url() {
+        let conn = open_mem();
+        assert!(find_by_url(&conn, "https://other.com").unwrap().is_none());
+    }
+
+    #[test]
+    fn find_by_path_returns_existing_track() {
+        let conn = open_mem();
+        let mut track = sample_track("t14");
+        track.source_type = "local".to_string();
+        track.source_url = None;
+        track.source_path = Some("/music/song.mp3".to_string());
+        insert_track(&conn, &track).unwrap();
+        let found = find_by_path(&conn, "/music/song.mp3").unwrap();
+        assert!(found.is_some());
+        assert_eq!(found.unwrap().id, "t14");
+    }
+
+    #[test]
+    fn find_by_path_returns_none_for_unknown_path() {
+        let conn = open_mem();
+        assert!(find_by_path(&conn, "/music/missing.mp3").unwrap().is_none());
     }
 
     #[test]
