@@ -35,8 +35,8 @@ macro_rules! lock_or_abort {
 /// Returns `Err` if the DB write itself fails so the caller can emit an error event and abort.
 fn commit_result(conn: &Connection, track_id: &str, field: db::StatusField, result: &Result<(), String>) -> Result<(), String> {
     match result {
-        Ok(_) => db::update_status(conn, track_id, field, "done", None).map_err(|e| e.to_string()),
-        Err(e) => db::update_status(conn, track_id, field, "error", Some(e)).map_err(|e| e.to_string()),
+        Ok(_) => db::update_status(conn, track_id, field, db::Status::Done, None).map_err(|e| e.to_string()),
+        Err(e) => db::update_status(conn, track_id, field, db::Status::Error, Some(e)).map_err(|e| e.to_string()),
     }
 }
 
@@ -147,7 +147,7 @@ pub async fn run<R: Runtime>(
     // TODO: re-enable analysis once beat/note detection is ready (MVP v2)
     {
         let conn = lock_or_abort!(&db, &app, &track_id, "analysis");
-        if let Err(e) = db::update_status(&conn, &track_id, db::StatusField::Analysis, "done", None) {
+        if let Err(e) = db::update_status(&conn, &track_id, db::StatusField::Analysis, db::Status::Done, None) {
             emit(&app, &track_id, "analysis", "error", Some(format!("failed to write status: {e}")));
             return;
         }
