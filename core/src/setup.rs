@@ -1,16 +1,13 @@
-use std::path::{Path, PathBuf};
 use futures_util::StreamExt;
 use sha2::{Digest, Sha256};
+use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Emitter};
 
 /// Update this to your GitHub repo (owner/name).
 const GITHUB_REPO: &str = "asawo/wavesplit";
 const RELEASE_TAG: &str = "demucs-sidecar";
 
-async fn fetch_expected_sha256(
-    client: &reqwest::Client,
-    asset: &str,
-) -> Result<String, String> {
+async fn fetch_expected_sha256(client: &reqwest::Client, asset: &str) -> Result<String, String> {
     let url = format!(
         "https://github.com/{}/releases/download/{}/checksums.txt",
         GITHUB_REPO, RELEASE_TAG
@@ -21,7 +18,10 @@ async fn fetch_expected_sha256(
         .await
         .map_err(|e| format!("failed to fetch checksums.txt: {e}"))?;
     if !response.status().is_success() {
-        return Err(format!("failed to fetch checksums.txt: HTTP {}", response.status()));
+        return Err(format!(
+            "failed to fetch checksums.txt: HTTP {}",
+            response.status()
+        ));
     }
     let body = response
         .text()
@@ -112,15 +112,16 @@ fn remove_quarantine(dest: &Path) -> Result<(), String> {
 }
 
 pub async fn download(demucs_dir: &Path, app: &AppHandle) -> Result<(), String> {
-    std::fs::create_dir_all(demucs_dir)
-        .map_err(|e| format!("failed to create demucs dir: {e}"))?;
+    std::fs::create_dir_all(demucs_dir).map_err(|e| format!("failed to create demucs dir: {e}"))?;
 
     let client = reqwest::Client::new();
     let expected = fetch_expected_sha256(&client, asset_name()).await?;
 
     let url = format!(
         "https://github.com/{}/releases/download/{}/{}",
-        GITHUB_REPO, RELEASE_TAG, asset_name()
+        GITHUB_REPO,
+        RELEASE_TAG,
+        asset_name()
     );
     let response = client
         .get(&url)
@@ -154,15 +155,20 @@ pub async fn download(demucs_dir: &Path, app: &AppHandle) -> Result<(), String> 
             .await
             .map_err(|e| format!("write error: {e}"))?;
 
-        let _ = app.emit("setup:progress", DownloadProgress {
-            downloaded_mb: downloaded as f64 / 1_048_576.0,
-            total_mb: total_bytes.map(|t| t as f64 / 1_048_576.0),
-            percent: total_bytes.map(|t| (downloaded * 100 / t) as u32),
-        });
+        let _ = app.emit(
+            "setup:progress",
+            DownloadProgress {
+                downloaded_mb: downloaded as f64 / 1_048_576.0,
+                total_mb: total_bytes.map(|t| t as f64 / 1_048_576.0),
+                percent: total_bytes.map(|t| (downloaded * 100 / t) as u32),
+            },
+        );
     }
 
     use tokio::io::AsyncWriteExt;
-    file.flush().await.map_err(|e| format!("flush error: {e}"))?;
+    file.flush()
+        .await
+        .map_err(|e| format!("flush error: {e}"))?;
     drop(file);
 
     let actual = hex::encode(hasher.finalize());

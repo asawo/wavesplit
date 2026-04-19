@@ -1,4 +1,4 @@
-use rusqlite::{Connection, Result, params};
+use rusqlite::{params, Connection, Result};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
@@ -57,8 +57,10 @@ pub fn open(db_path: &Path) -> Result<Connection> {
     conn.execute_batch(include_str!("../schema.sql"))?;
     conn.execute_batch("PRAGMA journal_mode=WAL;")?;
     // Migrations — .ok() makes each idempotent (fails silently if column already exists)
-    conn.execute_batch("ALTER TABLE tracks ADD COLUMN export_path TEXT;").ok();
-    conn.execute_batch("ALTER TABLE tracks ADD COLUMN artist TEXT;").ok();
+    conn.execute_batch("ALTER TABLE tracks ADD COLUMN export_path TEXT;")
+        .ok();
+    conn.execute_batch("ALTER TABLE tracks ADD COLUMN artist TEXT;")
+        .ok();
     Ok(conn)
 }
 
@@ -77,11 +79,19 @@ pub fn insert_track(conn: &Connection, track: &Track) -> Result<()> {
 }
 
 pub fn set_export_path(conn: &Connection, id: &str, path: &str) -> Result<()> {
-    conn.execute("UPDATE tracks SET export_path = ?1 WHERE id = ?2", params![path, id])?;
+    conn.execute(
+        "UPDATE tracks SET export_path = ?1 WHERE id = ?2",
+        params![path, id],
+    )?;
     Ok(())
 }
 
-pub fn update_track_meta(conn: &Connection, id: &str, title: &str, artist: Option<&str>) -> Result<()> {
+pub fn update_track_meta(
+    conn: &Connection,
+    id: &str,
+    title: &str,
+    artist: Option<&str>,
+) -> Result<()> {
     conn.execute(
         "UPDATE tracks SET title = ?1, artist = ?2 WHERE id = ?3",
         params![title, artist, id],
@@ -95,25 +105,26 @@ pub fn list_tracks(conn: &Connection) -> Result<Vec<Track>> {
                 status_download, status_stems, status_analysis, error_message, export_path, artist
          FROM tracks ORDER BY sort_order DESC",
     )?;
-    let tracks = stmt.query_map([], |row| {
-        Ok(Track {
-            id: row.get(0)?,
-            title: row.get(1)?,
-            source_type: row.get(2)?,
-            source_url: row.get(3)?,
-            source_path: row.get(4)?,
-            created_at: row.get(5)?,
-            sort_order: row.get(6)?,
-            duration_ms: row.get(7)?,
-            status_download: row.get(8)?,
-            status_stems: row.get(9)?,
-            status_analysis: row.get(10)?,
-            error_message: row.get(11)?,
-            export_path: row.get(12)?,
-            artist: row.get(13)?,
-        })
-    })?
-    .collect::<Result<Vec<_>>>()?;
+    let tracks = stmt
+        .query_map([], |row| {
+            Ok(Track {
+                id: row.get(0)?,
+                title: row.get(1)?,
+                source_type: row.get(2)?,
+                source_url: row.get(3)?,
+                source_path: row.get(4)?,
+                created_at: row.get(5)?,
+                sort_order: row.get(6)?,
+                duration_ms: row.get(7)?,
+                status_download: row.get(8)?,
+                status_stems: row.get(9)?,
+                status_analysis: row.get(10)?,
+                error_message: row.get(11)?,
+                export_path: row.get(12)?,
+                artist: row.get(13)?,
+            })
+        })?
+        .collect::<Result<Vec<_>>>()?;
     Ok(tracks)
 }
 
@@ -232,7 +243,12 @@ pub fn get_track(conn: &Connection, id: &str) -> Result<Option<Track>> {
     rows.next().transpose()
 }
 
-pub fn reset_for_retry(conn: &Connection, id: &str, reset_download: bool, reset_stems: bool) -> Result<()> {
+pub fn reset_for_retry(
+    conn: &Connection,
+    id: &str,
+    reset_download: bool,
+    reset_stems: bool,
+) -> Result<()> {
     let pending = StageStatus::Pending.as_str();
     if reset_download {
         conn.execute(
@@ -254,11 +270,8 @@ pub fn reset_for_retry(conn: &Connection, id: &str, reset_download: bool, reset_
 }
 
 pub fn next_sort_order(conn: &Connection) -> Result<i64> {
-    let max: Option<i64> = conn.query_row(
-        "SELECT MAX(sort_order) FROM tracks",
-        [],
-        |row| row.get(0),
-    )?;
+    let max: Option<i64> =
+        conn.query_row("SELECT MAX(sort_order) FROM tracks", [], |row| row.get(0))?;
     Ok(max.unwrap_or(0) + 1)
 }
 
@@ -314,7 +327,14 @@ mod tests {
     fn update_status_stores_error_message() {
         let conn = open_mem();
         insert_track(&conn, &sample_track("t3")).unwrap();
-        update_status(&conn, "t3", Stage::Download, StageStatus::Error, Some("network failure")).unwrap();
+        update_status(
+            &conn,
+            "t3",
+            Stage::Download,
+            StageStatus::Error,
+            Some("network failure"),
+        )
+        .unwrap();
         let track = get_track(&conn, "t3").unwrap().unwrap();
         assert_eq!(track.status_download, "error");
         assert_eq!(track.error_message.as_deref(), Some("network failure"));

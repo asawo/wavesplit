@@ -25,8 +25,10 @@ pub fn separate(
 
         let output = Command::new(demucs_bin)
             .args([
-                "--name", "htdemucs",
-                "-o", tmp.to_str().ok_or("invalid tmp path")?,
+                "--name",
+                "htdemucs",
+                "-o",
+                tmp.to_str().ok_or("invalid tmp path")?,
                 source_wav.to_str().ok_or("invalid source_wav path")?,
             ])
             .env("TORCH_HOME", cache_dir)

@@ -1,158 +1,192 @@
 <script>
-  import { invoke } from '@tauri-apps/api/core'
-  import { listen } from '@tauri-apps/api/event'
-  import { open as openDialog, confirm } from '@tauri-apps/plugin-dialog'
+  import { invoke } from "@tauri-apps/api/core";
+  import { listen } from "@tauri-apps/api/event";
+  import { open as openDialog, confirm } from "@tauri-apps/plugin-dialog";
 
-  import { onMount, onDestroy } from 'svelte'
-  import { fuzzy, SORT_FNS, isReady, hasError, statusLabel, progressPct } from './tracklist.helpers.js'
+  import { onMount, onDestroy } from "svelte";
+  import {
+    fuzzy,
+    SORT_FNS,
+    isReady,
+    hasError,
+    statusLabel,
+    progressPct,
+  } from "./tracklist.helpers.js";
 
-  let { tracks = $bindable([]), refresh = $bindable(null), onPlay } = $props()
+  let { tracks = $bindable([]), refresh = $bindable(null), onPlay } = $props();
 
   // pipeline events keyed by track id: { stage, status, message }
-  let progress = $state({})
+  let progress = $state({});
 
-  let filterQuery = $state('')
-  let sortKey = $state('newest')
+  let filterQuery = $state("");
+  let sortKey = $state("newest");
 
   function matchesFilter(track) {
-    if (!filterQuery) return true
-    return fuzzy(filterQuery, track.title) || fuzzy(filterQuery, track.artist ?? '')
+    if (!filterQuery) return true;
+    return (
+      fuzzy(filterQuery, track.title) || fuzzy(filterQuery, track.artist ?? "")
+    );
   }
 
   let displayTracks = $derived(
-    tracks.filter(matchesFilter).sort(SORT_FNS[sortKey])
-  )
+    tracks.filter(matchesFilter).sort(SORT_FNS[sortKey]),
+  );
 
-  let unlisten
+  let unlisten;
 
   onMount(async () => {
-    refresh = refreshTracks
-    unlisten = await listen('pipeline', (event) => {
-      const { track_id, stage, status, message } = event.payload
+    refresh = refreshTracks;
+    unlisten = await listen("pipeline", (event) => {
+      const { track_id, stage, status, message } = event.payload;
       progress = {
         ...progress,
         [track_id]: { stage, status, message },
-      }
+      };
       // Refresh from DB whenever any stage finishes or errors
-      if (status === 'done' || status === 'error') {
-        refreshTracks()
+      if (status === "done" || status === "error") {
+        refreshTracks();
       }
-    })
-    await refreshTracks()
-  })
+    });
+    await refreshTracks();
+  });
 
-  onDestroy(() => unlisten?.())
+  onDestroy(() => unlisten?.());
 
-  const PENDING_ID = '__pending__'
+  const PENDING_ID = "__pending__";
 
   async function refreshTracks() {
-    tracks = await invoke('list_tracks')
+    tracks = await invoke("list_tracks");
   }
 
   // Inline editing: editingId = track id currently being edited
-  let editingId = $state(null)
-  let editTitle = $state('')
-  let editArtist = $state('')
+  let editingId = $state(null);
+  let editTitle = $state("");
+  let editArtist = $state("");
 
   function startEdit(track) {
-    editingId = track.id
-    editTitle = track.title
-    editArtist = track.artist ?? ''
+    editingId = track.id;
+    editTitle = track.title;
+    editArtist = track.artist ?? "";
   }
 
   async function commitEdit(track) {
-    if (editingId !== track.id) return
-    editingId = null
-    const trimmedTitle = editTitle.trim() || track.title
-    const trimmedArtist = editArtist.trim() || null
-    if (trimmedTitle === track.title && trimmedArtist === (track.artist ?? null)) return
-    editError = ''
+    if (editingId !== track.id) return;
+    editingId = null;
+    const trimmedTitle = editTitle.trim() || track.title;
+    const trimmedArtist = editArtist.trim() || null;
+    if (
+      trimmedTitle === track.title &&
+      trimmedArtist === (track.artist ?? null)
+    )
+      return;
+    editError = "";
     try {
-      await invoke('update_track_meta', { id: track.id, title: trimmedTitle, artist: trimmedArtist })
-      await refreshTracks()
+      await invoke("update_track_meta", {
+        id: track.id,
+        title: trimmedTitle,
+        artist: trimmedArtist,
+      });
+      await refreshTracks();
     } catch (e) {
-      editError = String(e)
-      await refreshTracks()
+      editError = String(e);
+      await refreshTracks();
     }
   }
 
   function onEditKeydown(e, track) {
-    if (e.key === 'Enter') { e.target.blur() }
-    if (e.key === 'Escape') { editingId = null }
-  }
-
-  let editError = $state('')
-
-  let exportingId = $state(null)
-  let exportError = $state('')
-
-  async function exportStems(track) {
-    const dest = await openDialog({ directory: true, title: 'Export stems to…' })
-    if (!dest) return
-    exportingId = track.id
-    exportError = ''
-    try {
-      await invoke('export_stems', { trackId: track.id, destDir: dest })
-      await refreshTracks()
-    } catch (e) {
-      exportError = String(e)
-    } finally {
-      exportingId = null
+    if (e.key === "Enter") {
+      e.target.blur();
+    }
+    if (e.key === "Escape") {
+      editingId = null;
     }
   }
 
-  let deleteError = $state('')
+  let editError = $state("");
 
-  let retryingId = $state(null)
-  let retryError = $state('')
+  let exportingId = $state(null);
+  let exportError = $state("");
+
+  async function exportStems(track) {
+    const dest = await openDialog({
+      directory: true,
+      title: "Export stems to…",
+    });
+    if (!dest) return;
+    exportingId = track.id;
+    exportError = "";
+    try {
+      await invoke("export_stems", { trackId: track.id, destDir: dest });
+      await refreshTracks();
+    } catch (e) {
+      exportError = String(e);
+    } finally {
+      exportingId = null;
+    }
+  }
+
+  let deleteError = $state("");
+
+  let retryingId = $state(null);
+  let retryError = $state("");
 
   async function retryTrack(track) {
-    retryingId = track.id
-    retryError = ''
+    retryingId = track.id;
+    retryError = "";
     try {
-      await invoke('retry_track', { id: track.id })
-      await refreshTracks()
+      await invoke("retry_track", { id: track.id });
+      await refreshTracks();
     } catch (e) {
-      retryError = String(e)
+      retryError = String(e);
     } finally {
-      retryingId = null
+      retryingId = null;
     }
   }
 
   async function deleteTrack(track) {
     const ok = await confirm(
       `"${track.title}" and all its stems will be permanently deleted.`,
-      { title: 'Delete track?', kind: 'warning', okLabel: 'Delete', cancelLabel: 'Cancel' }
-    )
-    if (!ok) return
-    deleteError = ''
+      {
+        title: "Delete track?",
+        kind: "warning",
+        okLabel: "Delete",
+        cancelLabel: "Cancel",
+      },
+    );
+    if (!ok) return;
+    deleteError = "";
     try {
-      await invoke('delete_track', { id: track.id })
-      tracks = tracks.filter((t) => t.id !== track.id)
-      const { [track.id]: _, ...rest } = progress
-      progress = rest
+      await invoke("delete_track", { id: track.id });
+      tracks = tracks.filter((t) => t.id !== track.id);
+      progress = Object.fromEntries(
+        Object.entries(progress).filter(([k]) => k !== String(track.id)),
+      );
     } catch (e) {
-      deleteError = String(e)
+      deleteError = String(e);
     }
   }
 
   async function openFolder(path) {
     try {
-      await invoke('open_folder', { path })
+      await invoke("open_folder", { path });
     } catch (e) {
-      deleteError = String(e)
+      deleteError = String(e);
     }
   }
 
   function isProcessing(track) {
-    return !isReady(track) && !hasError(track, progress)
+    return !isReady(track) && !hasError(track, progress);
   }
 </script>
 
 <div class="track-list">
   {#if tracks.length > 0}
     <div class="toolbar">
-      <input class="filter-input" placeholder="Search" bind:value={filterQuery} />
+      <input
+        class="filter-input"
+        placeholder="Search"
+        bind:value={filterQuery}
+      />
       <select class="sort-select" bind:value={sortKey}>
         <option value="newest">Newest</option>
         <option value="oldest">Oldest</option>
@@ -163,99 +197,181 @@
   {/if}
 
   <div class="tracks-scroll">
-  {#if editError}
-    <p class="export-error">{editError} <button class="dismiss-error" onclick={() => editError = ''}>×</button></p>
-  {/if}
+    {#if editError}
+      <p class="export-error">
+        {editError}
+        <button class="dismiss-error" onclick={() => (editError = "")}>×</button
+        >
+      </p>
+    {/if}
 
-  {#if deleteError}
-    <p class="export-error">{deleteError} <button class="dismiss-error" onclick={() => deleteError = ''}>×</button></p>
-  {/if}
+    {#if deleteError}
+      <p class="export-error">
+        {deleteError}
+        <button class="dismiss-error" onclick={() => (deleteError = "")}
+          >×</button
+        >
+      </p>
+    {/if}
 
-  {#if exportError}
-    <p class="export-error">{exportError} <button class="dismiss-error" onclick={() => exportError = ''}>×</button></p>
-  {/if}
+    {#if exportError}
+      <p class="export-error">
+        {exportError}
+        <button class="dismiss-error" onclick={() => (exportError = "")}
+          >×</button
+        >
+      </p>
+    {/if}
 
-  {#if retryError}
-    <p class="export-error">{retryError} <button class="dismiss-error" onclick={() => retryError = ''}>×</button></p>
-  {/if}
+    {#if retryError}
+      <p class="export-error">
+        {retryError}
+        <button class="dismiss-error" onclick={() => (retryError = "")}
+          >×</button
+        >
+      </p>
+    {/if}
 
-  {#if tracks.length === 0}
-    <p class="empty">No tracks yet. Add a YouTube URL or open a local file.</p>
-  {/if}
+    {#if tracks.length === 0}
+      <p class="empty">
+        No tracks yet. Add a YouTube URL or open a local file.
+      </p>
+    {/if}
 
-  {#each displayTracks as track (track.id)}
-    <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-    <div
-      class="track"
-      class:ready={isReady(track)}
-      class:error={hasError(track, progress)}
-      class:pending={track.id === PENDING_ID}
-      class:playable={isReady(track) && !!onPlay}
-      role={isReady(track) && onPlay ? 'button' : undefined}
-      tabindex={isReady(track) && onPlay ? 0 : undefined}
-      onclick={() => { if (onPlay && isReady(track) && editingId !== track.id) onPlay(track) }}
-    >
-      <div class="track-info">
-        {#if track.id === PENDING_ID}
-          <span class="title">{track.title}</span>
-          <span class="status processing">Adding…</span>
-        {:else if editingId === track.id}
-          <input
-            class="edit-input title-input"
-            bind:value={editTitle}
-            onblur={() => commitEdit(track)}
-            onkeydown={(e) => onEditKeydown(e, track)}
-          />
-          <input
-            class="edit-input artist-input"
-            placeholder="Artist"
-            bind:value={editArtist}
-            onblur={() => commitEdit(track)}
-            onkeydown={(e) => onEditKeydown(e, track)}
-          />
-        {:else}
-          <span class="title" onclick={(e) => { e.stopPropagation(); startEdit(track) }} onkeydown={(e) => { e.stopPropagation(); e.key === 'Enter' && startEdit(track) }} role="button" tabindex="0">
-            {track.title}
-          </span>
-          <span class="artist" onclick={(e) => { e.stopPropagation(); startEdit(track) }} onkeydown={(e) => { e.stopPropagation(); e.key === 'Enter' && startEdit(track) }} role="button" tabindex="0">
-            {track.artist ?? '—'}
-          </span>
-        {/if}
-        {#if track.id !== PENDING_ID}
-          <span class="status" class:processing={isProcessing(track)} class:ready={isReady(track)}>
-            {statusLabel(track, progress)}
-          </span>
-          {#if isProcessing(track)}
-            <div class="progress-bar">
-              <div class="progress-fill" style="width: {progressPct(track, progress)}%"></div>
-            </div>
+    {#each displayTracks as track (track.id)}
+      <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+      <div
+        class="track"
+        class:ready={isReady(track)}
+        class:error={hasError(track, progress)}
+        class:pending={track.id === PENDING_ID}
+        class:playable={isReady(track) && !!onPlay}
+        role={isReady(track) && onPlay ? "button" : undefined}
+        tabindex={isReady(track) && onPlay ? 0 : undefined}
+        onclick={() => {
+          if (onPlay && isReady(track) && editingId !== track.id) onPlay(track);
+        }}
+      >
+        <div class="track-info">
+          {#if track.id === PENDING_ID}
+            <span class="title">{track.title}</span>
+            <span class="status processing">Adding…</span>
+          {:else if editingId === track.id}
+            <input
+              class="edit-input title-input"
+              bind:value={editTitle}
+              onblur={() => commitEdit(track)}
+              onkeydown={(e) => onEditKeydown(e, track)}
+            />
+            <input
+              class="edit-input artist-input"
+              placeholder="Artist"
+              bind:value={editArtist}
+              onblur={() => commitEdit(track)}
+              onkeydown={(e) => onEditKeydown(e, track)}
+            />
+          {:else}
+            <span
+              class="title"
+              onclick={(e) => {
+                e.stopPropagation();
+                startEdit(track);
+              }}
+              onkeydown={(e) => {
+                e.stopPropagation();
+                e.key === "Enter" && startEdit(track);
+              }}
+              role="button"
+              tabindex="0"
+            >
+              {track.title}
+            </span>
+            <span
+              class="artist"
+              onclick={(e) => {
+                e.stopPropagation();
+                startEdit(track);
+              }}
+              onkeydown={(e) => {
+                e.stopPropagation();
+                e.key === "Enter" && startEdit(track);
+              }}
+              role="button"
+              tabindex="0"
+            >
+              {track.artist ?? "—"}
+            </span>
           {/if}
-        {/if}
-      </div>
-      <div class="track-actions">
-        {#if track.id === PENDING_ID}
-          <span class="spinner" aria-label="Adding track"></span>
-        {:else}
-          {#if isReady(track)}
-            {#if track.export_path}
-              <button class="open-btn" onclick={(e) => { e.stopPropagation(); openFolder(track.export_path) }} title={track.export_path}>
-                Open folder
+          {#if track.id !== PENDING_ID}
+            <span
+              class="status"
+              class:processing={isProcessing(track)}
+              class:ready={isReady(track)}
+            >
+              {statusLabel(track, progress)}
+            </span>
+            {#if isProcessing(track)}
+              <div class="progress-bar">
+                <div
+                  class="progress-fill"
+                  style="width: {progressPct(track, progress)}%"
+                ></div>
+              </div>
+            {/if}
+          {/if}
+        </div>
+        <div class="track-actions">
+          {#if track.id === PENDING_ID}
+            <span class="spinner" aria-label="Adding track"></span>
+          {:else}
+            {#if isReady(track)}
+              {#if track.export_path}
+                <button
+                  class="open-btn"
+                  onclick={(e) => {
+                    e.stopPropagation();
+                    openFolder(track.export_path);
+                  }}
+                  title={track.export_path}
+                >
+                  Open folder
+                </button>
+              {/if}
+              <button
+                class="export-btn"
+                onclick={(e) => {
+                  e.stopPropagation();
+                  exportStems(track);
+                }}
+                disabled={exportingId === track.id}
+              >
+                {exportingId === track.id ? "Exporting…" : "↓ Export stems"}
               </button>
             {/if}
-            <button class="export-btn" onclick={(e) => { e.stopPropagation(); exportStems(track) }} disabled={exportingId === track.id}>
-              {exportingId === track.id ? 'Exporting…' : '↓ Export stems'}
-            </button>
+            {#if hasError(track, progress)}
+              <button
+                class="retry-btn"
+                onclick={(e) => {
+                  e.stopPropagation();
+                  retryTrack(track);
+                }}
+                disabled={retryingId === track.id}
+              >
+                {retryingId === track.id ? "Retrying…" : "↺ Retry"}
+              </button>
+            {/if}
+            <button
+              class="delete-btn"
+              onclick={(e) => {
+                e.stopPropagation();
+                deleteTrack(track);
+              }}
+              title="Delete track">✕</button
+            >
           {/if}
-          {#if hasError(track, progress)}
-            <button class="retry-btn" onclick={(e) => { e.stopPropagation(); retryTrack(track) }} disabled={retryingId === track.id}>
-              {retryingId === track.id ? 'Retrying…' : '↺ Retry'}
-            </button>
-          {/if}
-          <button class="delete-btn" onclick={(e) => { e.stopPropagation(); deleteTrack(track) }} title="Delete track">✕</button>
-        {/if}
+        </div>
       </div>
-    </div>
-  {/each}
+    {/each}
   </div>
 </div>
 
@@ -540,6 +656,8 @@
   }
 
   @keyframes spin {
-    to { transform: rotate(360deg); }
+    to {
+      transform: rotate(360deg);
+    }
   }
 </style>
