@@ -11,6 +11,9 @@ import sys
 import json
 from pathlib import Path
 
+STEM_NAMES = ("bass", "drums", "vocals", "other")
+HARMONIC_STEMS = tuple(s for s in STEM_NAMES if s != "drums")
+
 try:
     import librosa
     import numpy as np
@@ -95,7 +98,7 @@ def main():
     beat_times = [b["time"] for b in timing["beats"]]
 
     stem_annotations = {}
-    for stem_name in ("bass", "vocals", "other"):
+    for stem_name in HARMONIC_STEMS:
         stem_path = stems_dir / f"{stem_name}.wav"
         if not stem_path.exists():
             print(f"  skipping {stem_name} (not found)", flush=True)
