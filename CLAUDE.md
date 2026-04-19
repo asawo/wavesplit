@@ -77,8 +77,30 @@ Migrations are additive via `.ok()` on `ALTER TABLE` in `db::open()`.
 brew install yt-dlp ffmpeg poetry
 cd python && poetry install
 pnpm install
-just dev        # or: pnpm run tauri dev
+just install-hooks  # install pre-commit hook (once per clone)
+just dev            # or: pnpm run tauri dev
 ```
+
+## Linting & CI
+
+Run all checks before pushing:
+
+```sh
+just ci          # fmt-check + clippy + cargo test + vite build + svelte-check + prettier
+just fix         # auto-format Rust + frontend (then re-run ci)
+```
+
+Individual commands:
+- `just fmt-check` / `just fmt` — Rust formatting (check / fix)
+- `just lint` — cargo clippy -D warnings
+- `just test` — cargo test
+- `just check-ui` — svelte-check (Svelte component errors)
+- `just lint-ui` — Prettier formatting check
+- `just build-ui` — Vite build (frontend only)
+
+Frontend config: `.prettierrc` (Prettier), `jsconfig.json` (JS/Svelte type checking, excludes `dist/` and `*.test.js`).
+
+CI runs on every push/PR (`ci.yml` for Rust, `ci-frontend.yml` for frontend). Both workflows mirror `just ci`.
 
 ## Important behaviours
 

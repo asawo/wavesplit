@@ -8,7 +8,10 @@
     "build": "vite build",
     "preview": "vite preview",
     "tauri": "tauri",
-    "test": "vitest run"
+    "test": "vitest run",
+    "check": "svelte-check",
+    "format": "prettier --write \"ui/**/*.{svelte,js,css}\"",
+    "format:check": "prettier --check \"ui/**/*.{svelte,js,css}\""
   },
   "dependencies": {
     "@fontsource/oleo-script-swash-caps": "^5.2.8",
@@ -21,7 +24,10 @@
     "@tauri-apps/cli": "^2",
     "@testing-library/svelte": "^5.0.0",
     "happy-dom": "^20.8.9",
+    "prettier": "^3.4.0",
+    "prettier-plugin-svelte": "^3.4.0",
     "svelte": "^5.1.3",
+    "svelte-check": "^4.0.0",
     "vite": "^5.4.10",
     "vitest": "^2.0.0"
   }

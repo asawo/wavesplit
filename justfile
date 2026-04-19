@@ -110,12 +110,45 @@ test:
 fmt:
     source "$HOME/.cargo/env" && cargo fmt --manifest-path core/Cargo.toml
 
+# Check Rust formatting without modifying files
+fmt-check:
+    source "$HOME/.cargo/env" && cargo fmt --manifest-path core/Cargo.toml --check
+
 # Lint Rust code
 lint:
     source "$HOME/.cargo/env" && cargo clippy --manifest-path core/Cargo.toml -- -D warnings
 
-# Run all CI checks locally (clippy + test)
-ci: lint test
+# Auto-format Rust and frontend code
+fix:
+    source "$HOME/.cargo/env" && cargo fmt --manifest-path core/Cargo.toml
+    pnpm run format
+
+# Type-check Svelte components
+check-ui:
+    pnpm run check
+
+# Check frontend formatting (Prettier)
+lint-ui:
+    pnpm run format:check
+
+# Build frontend only (Vite, no Tauri)
+build-ui:
+    pnpm run build
+
+# Run all CI checks locally — mirrors what CI runs on push/PR
+ci: fmt-check lint test build-ui check-ui lint-ui
+
+# Install git pre-commit hook (run once after cloning)
+install-hooks:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cat > .git/hooks/pre-commit << 'HOOK'
+    #!/usr/bin/env bash
+    set -euo pipefail
+    just fmt-check && just lint && just check-ui
+    HOOK
+    chmod +x .git/hooks/pre-commit
+    echo "pre-commit hook installed"
 
 # Open app data directory (macOS)
 open-data:
