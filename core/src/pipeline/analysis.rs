@@ -9,10 +9,14 @@ pub fn project_dir() -> std::path::PathBuf {
     let exe = std::env::current_exe().unwrap_or_default();
     // dev path: core/target/debug/wavesplit → up 4 levels to repo root, then python/
     let dev_path = exe
-        .parent().unwrap_or(Path::new("."))
-        .parent().unwrap_or(Path::new("."))
-        .parent().unwrap_or(Path::new("."))
-        .parent().unwrap_or(Path::new("."))
+        .parent()
+        .unwrap_or(Path::new("."))
+        .parent()
+        .unwrap_or(Path::new("."))
+        .parent()
+        .unwrap_or(Path::new("."))
+        .parent()
+        .unwrap_or(Path::new("."))
         .join("python");
     if dev_path.join("pyproject.toml").exists() {
         return dev_path;
@@ -34,7 +38,8 @@ pub fn run(stems_dir: &Path, analysis_dir: &Path) -> Result<(), String> {
 
     let status = Command::new("poetry")
         .args([
-            "run", "python3",
+            "run",
+            "python3",
             script.to_str().ok_or("invalid script path")?,
             stems_dir.to_str().ok_or("invalid stems_dir path")?,
             analysis_dir.to_str().ok_or("invalid analysis_dir path")?,

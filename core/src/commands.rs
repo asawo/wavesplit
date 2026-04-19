@@ -1,10 +1,10 @@
+use chrono::Utc;
+use rusqlite::Connection;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use rusqlite::Connection;
 use tauri::AppHandle;
-use uuid::Uuid;
-use chrono::Utc;
 use tokio_util::sync::CancellationToken;
+use uuid::Uuid;
 
 use crate::db::{self, Track};
 use crate::paths;
@@ -25,7 +25,9 @@ fn validate_youtube_url(raw: &str) -> Result<(), String> {
     }
     let host = parsed.host_str().unwrap_or("");
     if !ALLOWED_YOUTUBE_HOSTS.contains(&host) {
-        return Err(format!("URL host '{host}' is not an allowed YouTube domain"));
+        return Err(format!(
+            "URL host '{host}' is not an allowed YouTube domain"
+        ));
     }
     Ok(())
 }
@@ -55,10 +57,26 @@ fn spawn_pipeline(
     start_stage: pipeline::StartStage,
     tasks: Arc<Mutex<HashMap<String, CancellationToken>>>,
 ) {
-    tasks.lock().unwrap_or_else(|e| e.into_inner()).insert(track_id.clone(), token.clone());
+    tasks
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .insert(track_id.clone(), token.clone());
     tokio::spawn(async move {
-        let _guard = TaskGuard { tasks, track_id: track_id.clone() };
-        pipeline::run(track_id, source, db, data_dir, demucs_dir, token, app, start_stage).await;
+        let _guard = TaskGuard {
+            tasks,
+            track_id: track_id.clone(),
+        };
+        pipeline::run(
+            track_id,
+            source,
+            db,
+            data_dir,
+            demucs_dir,
+            token,
+            app,
+            start_stage,
+        )
+        .await;
     });
 }
 
@@ -71,14 +89,17 @@ pub struct StemPaths {
 }
 
 #[tauri::command]
-pub fn get_stem_paths(track_id: String, state: tauri::State<'_, AppState>) -> Result<StemPaths, String> {
+pub fn get_stem_paths(
+    track_id: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<StemPaths, String> {
     let stems = paths::stems_dir(&state.data_dir, &track_id);
     let p = |name: &str| stems.join(name).to_string_lossy().into_owned();
     Ok(StemPaths {
         vocals: p("vocals.wav"),
-        drums:  p("drums.wav"),
-        bass:   p("bass.wav"),
-        other:  p("other.wav"),
+        drums: p("drums.wav"),
+        bass: p("bass.wav"),
+        other: p("other.wav"),
     })
 }
 
@@ -89,9 +110,16 @@ pub async fn add_track_youtube(
     state: tauri::State<'_, AppState>,
 ) -> Result<String, String> {
     validate_youtube_url(&url)?;
-    let title = pipeline::download::youtube_title(&url)
-        .unwrap_or_else(|| url.clone());
-    add_track(Source::Youtube(url.clone()), title, Some(url), None, app, state).await
+    let title = pipeline::download::youtube_title(&url).unwrap_or_else(|| url.clone());
+    add_track(
+        Source::Youtube(url.clone()),
+        title,
+        Some(url),
+        None,
+        app,
+        state,
+    )
+    .await
 }
 
 #[tauri::command]
@@ -114,33 +142,45 @@ async fn add_track(
     state: tauri::State<'_, AppState>,
 ) -> Result<String, String> {
     let id = Uuid::new_v4().to_string();
-    let source_type = if source_url.is_some() { "youtube" } else { "local" };
+    let source_type = if source_url.is_some() {
+        "youtube"
+    } else {
+        "local"
+    };
 
     // Create track directories
     std::fs::create_dir_all(paths::track_dir(&state.data_dir, &id)).map_err(|e| e.to_string())?;
     std::fs::create_dir_all(paths::stems_dir(&state.data_dir, &id)).map_err(|e| e.to_string())?;
-    std::fs::create_dir_all(paths::analysis_dir(&state.data_dir, &id)).map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(paths::analysis_dir(&state.data_dir, &id))
+        .map_err(|e| e.to_string())?;
 
     // Insert DB row
     {
-        let conn = state.db.lock().map_err(|_| "database unavailable".to_string())?;
+        let conn = state
+            .db
+            .lock()
+            .map_err(|_| "database unavailable".to_string())?;
         let order = db::next_sort_order(&conn).map_err(|e| e.to_string())?;
-        db::insert_track(&conn, &Track {
-            id: id.clone(),
-            title,
-            source_type: source_type.to_string(),
-            source_url,
-            source_path,
-            created_at: Utc::now().to_rfc3339(),
-            sort_order: order,
-            duration_ms: None,
-            status_download: "pending".into(),
-            status_stems: "pending".into(),
-            status_analysis: "pending".into(),
-            error_message: None,
-            export_path: None,
-            artist: None,
-        }).map_err(|e| e.to_string())?;
+        db::insert_track(
+            &conn,
+            &Track {
+                id: id.clone(),
+                title,
+                source_type: source_type.to_string(),
+                source_url,
+                source_path,
+                created_at: Utc::now().to_rfc3339(),
+                sort_order: order,
+                duration_ms: None,
+                status_download: "pending".into(),
+                status_stems: "pending".into(),
+                status_analysis: "pending".into(),
+                error_message: None,
+                export_path: None,
+                artist: None,
+            },
+        )
+        .map_err(|e| e.to_string())?;
     }
 
     // Spawn pipeline in background with a cancellation token.
@@ -161,7 +201,11 @@ async fn add_track(
 }
 
 #[tauri::command]
-pub fn export_stems(track_id: String, dest_dir: String, state: tauri::State<'_, AppState>) -> Result<Vec<String>, String> {
+pub fn export_stems(
+    track_id: String,
+    dest_dir: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<Vec<String>, String> {
     let stems_dir = paths::stems_dir(&state.data_dir, &track_id);
     let dest = std::path::PathBuf::from(&dest_dir);
 
@@ -187,7 +231,10 @@ pub fn export_stems(track_id: String, dest_dir: String, state: tauri::State<'_, 
         return Err("No stem files found for this track".into());
     }
 
-    let conn = state.db.lock().map_err(|_| "database unavailable".to_string())?;
+    let conn = state
+        .db
+        .lock()
+        .map_err(|_| "database unavailable".to_string())?;
     db::set_export_path(&conn, &track_id, &dest_dir).map_err(|e| e.to_string())?;
 
     Ok(exported)
@@ -200,7 +247,10 @@ pub fn update_track_meta(
     artist: Option<String>,
     state: tauri::State<'_, AppState>,
 ) -> Result<(), String> {
-    let conn = state.db.lock().map_err(|_| "database unavailable".to_string())?;
+    let conn = state
+        .db
+        .lock()
+        .map_err(|_| "database unavailable".to_string())?;
     db::update_track_meta(&conn, &id, &title, artist.as_deref()).map_err(|e| e.to_string())
 }
 
@@ -221,12 +271,20 @@ pub async fn retry_track(
     state: tauri::State<'_, AppState>,
 ) -> Result<(), String> {
     // Don't retry if already running
-    if state.tasks.lock().map_err(|_| "tasks unavailable".to_string())?.contains_key(&id) {
+    if state
+        .tasks
+        .lock()
+        .map_err(|_| "tasks unavailable".to_string())?
+        .contains_key(&id)
+    {
         return Err("track is already processing".to_string());
     }
 
     let track = {
-        let conn = state.db.lock().map_err(|_| "database unavailable".to_string())?;
+        let conn = state
+            .db
+            .lock()
+            .map_err(|_| "database unavailable".to_string())?;
         db::get_track(&conn, &id)
             .map_err(|e| e.to_string())?
             .ok_or_else(|| "track not found".to_string())?
@@ -241,17 +299,24 @@ pub async fn retry_track(
     };
 
     {
-        let conn = state.db.lock().map_err(|_| "database unavailable".to_string())?;
+        let conn = state
+            .db
+            .lock()
+            .map_err(|_| "database unavailable".to_string())?;
         db::reset_for_retry(&conn, &id, reset_download, reset_stems).map_err(|e| e.to_string())?;
     }
 
     let source = match track.source_type.as_str() {
         "youtube" => {
-            let url = track.source_url.ok_or_else(|| "missing source URL".to_string())?;
+            let url = track
+                .source_url
+                .ok_or_else(|| "missing source URL".to_string())?;
             pipeline::Source::Youtube(url)
         }
         _ => {
-            let path = track.source_path.ok_or_else(|| "missing source path".to_string())?;
+            let path = track
+                .source_path
+                .ok_or_else(|| "missing source path".to_string())?;
             pipeline::Source::Local(std::path::PathBuf::from(path))
         }
     };
@@ -303,7 +368,10 @@ mod tests {
             ("https://www.youtube.com.evil.com/x", "lookalike domain"),
         ];
         for (url, label) in &invalid {
-            assert!(validate_youtube_url(url).is_err(), "should reject ({label}): {url}");
+            assert!(
+                validate_youtube_url(url).is_err(),
+                "should reject ({label}): {url}"
+            );
         }
     }
 
@@ -319,7 +387,10 @@ mod tests {
         let tasks_clone = Arc::clone(&tasks);
         let tid = track_id.clone();
         let handle = tokio::spawn(async move {
-            let _guard = TaskGuard { tasks: tasks_clone, track_id: tid };
+            let _guard = TaskGuard {
+                tasks: tasks_clone,
+                track_id: tid,
+            };
             panic!("simulated pipeline panic");
         });
         let _ = handle.await; // absorb JoinError

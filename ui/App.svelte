@@ -1,27 +1,27 @@
 <script>
-  import { invoke } from '@tauri-apps/api/core'
-  import { onMount } from 'svelte'
-  import AddTrack from './lib/AddTrack.svelte'
-  import TrackList from './lib/TrackList.svelte'
-  import Playback from './lib/Playback.svelte'
-  import Setup from './lib/Setup.svelte'
+  import { invoke } from "@tauri-apps/api/core";
+  import { onMount } from "svelte";
+  import AddTrack from "./lib/AddTrack.svelte";
+  import TrackList from "./lib/TrackList.svelte";
+  import Playback from "./lib/Playback.svelte";
+  import Setup from "./lib/Setup.svelte";
 
-  let tracks = $state([])
-  let refreshTracks = $state(null)
-  let ready = $state(true)  // optimistic: assume available, overlay shows if not
+  let tracks = $state([]);
+  let refreshTracks = $state(null);
+  let ready = $state(true); // optimistic: assume available, overlay shows if not
 
-  let screen = $state('library')   // 'library' | 'playback'
-  let selectedTrack = $state(null)
+  let screen = $state("library"); // 'library' | 'playback'
+  let selectedTrack = $state(null);
 
   onMount(async () => {
     try {
-      ready = await invoke('check_demucs')
+      ready = await invoke("check_demucs");
     } catch {
-      ready = false
+      ready = false;
     }
-  })
+  });
 
-  const PENDING_ID = '__pending__'
+  const PENDING_ID = "__pending__";
 
   function handleStarted(title) {
     tracks = [
@@ -30,35 +30,34 @@
         title,
         artist: null,
         sort_order: Date.now(),
-        status_download: 'pending',
-        status_stems: 'pending',
-        status_analysis: 'pending',
+        status_download: "pending",
+        status_stems: "pending",
+        status_analysis: "pending",
         error_message: null,
         export_path: null,
         duration_ms: null,
       },
       ...tracks,
-    ]
+    ];
   }
 
   function handleAdded(_id) {
-    refreshTracks?.()
+    refreshTracks?.();
   }
 
   function openPlayback(track) {
-    selectedTrack = track
-    screen = 'playback'
+    selectedTrack = track;
+    screen = "playback";
   }
 
   function closePlayback() {
-    screen = 'library'
+    screen = "library";
     // keep selectedTrack alive so playhead position is preserved on return
   }
 </script>
 
 <div class="app fade-in">
-  <div class="screens-inner" class:show-playback={screen === 'playback'}>
-
+  <div class="screens-inner" class:show-playback={screen === "playback"}>
     <!-- Library screen -->
     <div class="screen">
       <header>
@@ -71,7 +70,11 @@
         </section>
         <section class="list-section">
           <p class="section-label">Library</p>
-          <TrackList bind:tracks bind:refresh={refreshTracks} onPlay={openPlayback} />
+          <TrackList
+            bind:tracks
+            bind:refresh={refreshTracks}
+            onPlay={openPlayback}
+          />
         </section>
       </main>
     </div>
@@ -81,18 +84,17 @@
       {#if selectedTrack}
         <Playback
           track={selectedTrack}
-          active={screen === 'playback'}
+          active={screen === "playback"}
           onBack={closePlayback}
         />
       {/if}
     </div>
-
   </div>
 </div>
 
 {#if !ready}
   <div class="overlay fade-in">
-    <Setup onReady={() => ready = true} />
+    <Setup onReady={() => (ready = true)} />
   </div>
 {/if}
 
@@ -120,8 +122,12 @@
   }
 
   @keyframes fade-in {
-    from { opacity: 0; }
-    to   { opacity: 1; }
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
   }
 
   :global(.fade-in) {
@@ -132,7 +138,7 @@
     margin: 0;
     background: var(--bg);
     color: var(--fg);
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     font-size: 14px;
     -webkit-font-smoothing: antialiased;
   }
@@ -171,7 +177,7 @@
   h1 {
     margin: 0;
     font-size: 24px;
-    font-family: 'Oleo Script Swash Caps', cursive;
+    font-family: "Oleo Script Swash Caps", cursive;
     font-weight: 400;
     color: var(--color-ready);
   }

@@ -1,65 +1,73 @@
 <script>
-  import { invoke } from '@tauri-apps/api/core'
-  import { open as openDialog } from '@tauri-apps/plugin-dialog'
+  import { invoke } from "@tauri-apps/api/core";
+  import { open as openDialog } from "@tauri-apps/plugin-dialog";
 
-  let { onAdded, onStarted } = $props()
+  let { onAdded, onStarted } = $props();
 
-  let url = $state('')
-  let loading = $state(false)
-  let error = $state('')
+  let url = $state("");
+  let loading = $state(false);
+  let error = $state("");
 
-  const YOUTUBE_PATTERN = 'https://(www\\.youtube\\.com|youtu\\.be|music\\.youtube\\.com)/.+'
+  const YOUTUBE_PATTERN =
+    "https://(www\\.youtube\\.com|youtu\\.be|music\\.youtube\\.com)/.+";
 
   function normalizeUrl(value) {
-    const trimmed = value.trim()
-    if (trimmed && !/^https?:\/\//i.test(trimmed)) return 'https://' + trimmed
-    return trimmed
+    const trimmed = value.trim();
+    if (trimmed && !/^https?:\/\//i.test(trimmed)) return "https://" + trimmed;
+    return trimmed;
   }
 
   function isValidYoutubeUrl(value) {
-    return new RegExp('^' + YOUTUBE_PATTERN + '$').test(normalizeUrl(value))
+    return new RegExp("^" + YOUTUBE_PATTERN + "$").test(normalizeUrl(value));
   }
 
   let urlError = $derived(
-    url.trim() && !isValidYoutubeUrl(url) ? 'Must be a YouTube URL (youtube.com, youtu.be, music.youtube.com)' : ''
-  )
+    url.trim() && !isValidYoutubeUrl(url)
+      ? "Must be a YouTube URL (youtube.com, youtu.be, music.youtube.com)"
+      : "",
+  );
 
   async function addYoutube() {
-    if (!url.trim()) return
-    loading = true
-    error = ''
-    const pendingUrl = normalizeUrl(url)
-    url = ''
-    onStarted(pendingUrl)
+    if (!url.trim()) return;
+    loading = true;
+    error = "";
+    const pendingUrl = normalizeUrl(url);
+    url = "";
+    onStarted(pendingUrl);
     try {
-      const id = await invoke('add_track_youtube', { url: pendingUrl })
-      onAdded(id)
+      const id = await invoke("add_track_youtube", { url: pendingUrl });
+      onAdded(id);
     } catch (e) {
-      error = String(e)
-      onAdded(null)
+      error = String(e);
+      onAdded(null);
     } finally {
-      loading = false
+      loading = false;
     }
   }
 
   async function addLocal() {
     const selected = await openDialog({
       multiple: false,
-      filters: [{ name: 'Audio', extensions: ['mp3', 'wav', 'flac', 'm4a', 'aac', 'ogg'] }],
-    })
-    if (!selected) return
-    loading = true
-    error = ''
+      filters: [
+        {
+          name: "Audio",
+          extensions: ["mp3", "wav", "flac", "m4a", "aac", "ogg"],
+        },
+      ],
+    });
+    if (!selected) return;
+    loading = true;
+    error = "";
     // Normalize backslashes for Windows paths (display only — `selected` is passed as-is to the backend)
-    onStarted(selected.replace(/\\/g, '/').split('/').pop() ?? 'Local file')
+    onStarted(selected.replace(/\\/g, "/").split("/").pop() ?? "Local file");
     try {
-      const id = await invoke('add_track_local', { path: selected })
-      onAdded(id)
+      const id = await invoke("add_track_local", { path: selected });
+      onAdded(id);
     } catch (e) {
-      error = String(e)
-      onAdded(null)
+      error = String(e);
+      onAdded(null);
     } finally {
-      loading = false
+      loading = false;
     }
   }
 </script>
@@ -71,9 +79,11 @@
       placeholder="YouTube URL"
       bind:value={url}
       disabled={loading}
-      onkeydown={(e) => e.key === 'Enter' && addYoutube()}
+      onkeydown={(e) => e.key === "Enter" && addYoutube()}
     />
-    <button onclick={addYoutube} disabled={loading || !isValidYoutubeUrl(url)}>Add</button>
+    <button onclick={addYoutube} disabled={loading || !isValidYoutubeUrl(url)}
+      >Add</button
+    >
     <span class="divider">or</span>
     <button onclick={addLocal} disabled={loading}>Open file…</button>
   </div>
