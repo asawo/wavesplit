@@ -45,6 +45,10 @@ jobs:
             touch core/binaries/${bin}-x86_64-unknown-linux-gnu
           done
 
+      - name: cargo fmt
+        working-directory: core
+        run: cargo fmt --check
+
       - name: cargo clippy
         working-directory: core
         run: cargo clippy --all-targets -- -D warnings
