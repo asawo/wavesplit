@@ -2,13 +2,13 @@ use rusqlite::{Connection, Result, params};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
-pub enum StatusField {
+pub enum Stage {
     Download,
     Stems,
     Analysis,
 }
 
-impl StatusField {
+impl Stage {
     fn column(&self) -> &'static str {
         match self {
             Self::Download => "status_download",
@@ -18,13 +18,13 @@ impl StatusField {
     }
 }
 
-pub enum Status {
+pub enum StageStatus {
     Pending,
     Done,
     Error,
 }
 
-impl Status {
+impl StageStatus {
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::Pending => "pending",
@@ -120,8 +120,8 @@ pub fn list_tracks(conn: &Connection) -> Result<Vec<Track>> {
 pub fn update_status(
     conn: &Connection,
     id: &str,
-    field: StatusField,
-    status: Status,
+    field: Stage,
+    status: StageStatus,
     error: Option<&str>,
 ) -> Result<()> {
     let sql = format!(
@@ -179,7 +179,7 @@ pub fn get_track(conn: &Connection, id: &str) -> Result<Option<Track>> {
 }
 
 pub fn reset_for_retry(conn: &Connection, id: &str, reset_download: bool, reset_stems: bool) -> Result<()> {
-    let pending = Status::Pending.as_str();
+    let pending = StageStatus::Pending.as_str();
     if reset_download {
         conn.execute(
             "UPDATE tracks SET status_download = ?1, status_stems = ?1, status_analysis = ?1, error_message = NULL WHERE id = ?2",
@@ -250,7 +250,7 @@ mod tests {
     fn update_status_sets_done() {
         let conn = open_mem();
         insert_track(&conn, &sample_track("t2")).unwrap();
-        update_status(&conn, "t2", StatusField::Download, Status::Done, None).unwrap();
+        update_status(&conn, "t2", Stage::Download, StageStatus::Done, None).unwrap();
         let track = get_track(&conn, "t2").unwrap().unwrap();
         assert_eq!(track.status_download, "done");
         assert_eq!(track.error_message, None);
@@ -260,7 +260,7 @@ mod tests {
     fn update_status_stores_error_message() {
         let conn = open_mem();
         insert_track(&conn, &sample_track("t3")).unwrap();
-        update_status(&conn, "t3", StatusField::Download, Status::Error, Some("network failure")).unwrap();
+        update_status(&conn, "t3", Stage::Download, StageStatus::Error, Some("network failure")).unwrap();
         let track = get_track(&conn, "t3").unwrap().unwrap();
         assert_eq!(track.status_download, "error");
         assert_eq!(track.error_message.as_deref(), Some("network failure"));
