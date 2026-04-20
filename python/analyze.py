@@ -21,9 +21,8 @@ except ImportError as e:
 SAMPLE_RATE = 44100
 FRAME_SIZE = 4096
 HOP_SIZE = 2048
-CHORD_WINDOW = 1.5  # seconds per chord detection window
-MIN_CHORD_STRENGTH = 0.1
 TIME_SIGNATURE = 4
+MIN_CHORD_STRENGTH = 0.4
 
 
 def detect_beats(audio):
@@ -33,27 +32,22 @@ def detect_beats(audio):
     return float(bpm), beats
 
 
-def build_chord_track(stems_dir):
+def compute_hpcps(stems_dir):
     """
-    Compute per-frame HPCP from chordal stems (other + vocals), falling back to
-    source.wav. Returns (chord_times, chords, strengths).
+    Load the chordal stem (other.wav, falling back to vocals.wav), apply
+    EqualLoudness, and return (hpcps: np.ndarray shape (N,12), hop_duration: float).
 
-    Key choices that follow Essentia's recommended chord detection pipeline:
-      - EqualLoudness pre-emphasis (standard for harmonic analysis)
-      - HPCP with harmonics=8 (essential to distinguish major/minor and extensions)
-      - Chordal stems only (no drums/bass) so HPCP isn't dominated by transients
+    Uses HPCP with harmonics=8 — essential for distinguishing chord quality
+    (major vs minor). Without harmonics the HPCP only captures the fundamental
+    and cannot reliably identify chord type.
     """
     stems_dir = Path(stems_dir)
-    # Prefer chordal stems (guitar, keys, etc.) — free of drums and bass
     candidate = stems_dir / "other.wav"
     if not candidate.exists():
         candidate = stems_dir / "vocals.wav"
 
-    loader = es.MonoLoader(filename=str(candidate), sampleRate=SAMPLE_RATE)
-    audio = loader()
+    audio = es.MonoLoader(filename=str(candidate), sampleRate=SAMPLE_RATE)()
     audio = es.EqualLoudness()(audio)
-
-    hop_duration = HOP_SIZE / SAMPLE_RATE
 
     windowing = es.Windowing(type="blackmanharris62")
     spectrum = es.Spectrum()
@@ -64,8 +58,6 @@ def build_chord_track(stems_dir):
         minFrequency=20,
         orderBy="magnitude",
     )
-    # harmonics=8 is critical: without it HPCP only sees the fundamental and
-    # cannot distinguish chord quality (major vs minor, extensions, etc.)
     hpcp_algo = es.HPCP(
         size=12,
         referenceFrequency=440.0,
@@ -87,25 +79,59 @@ def build_chord_track(stems_dir):
         freqs, mags = spectral_peaks(spec)
         hpcps.append(hpcp_algo(freqs, mags))
 
-    if not hpcps:
-        return [], [], []
+    hop_duration = HOP_SIZE / SAMPLE_RATE
+    return np.array(hpcps) if hpcps else np.zeros((0, 12)), hop_duration
 
-    chords_detection = es.ChordsDetection(
-        hopSize=HOP_SIZE,
-        windowSize=CHORD_WINDOW,
-    )
-    chords, strengths = chords_detection(np.array(hpcps))
 
-    n = min(len(hpcps), len(chords))
-    times = [i * hop_duration for i in range(n)]
-    return times, list(chords[:n]), [float(s) for s in strengths[:n]]
+def _build_chord_templates():
+    """
+    Build unit-normalised 12-bin HPCP templates for all 24 major/minor chords.
+    Weights: root=1.0, third=0.5, fifth=0.8 — mirrors the relative perceptual
+    salience of chord tones.
+    """
+    notes = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
+    templates = {}
+    for i, root in enumerate(notes):
+        major = np.zeros(12)
+        major[i % 12] = 1.0
+        major[(i + 4) % 12] = 0.5  # major third
+        major[(i + 7) % 12] = 0.8  # perfect fifth
+        templates[root] = major / np.linalg.norm(major)
+
+        minor = np.zeros(12)
+        minor[i % 12] = 1.0
+        minor[(i + 3) % 12] = 0.5  # minor third
+        minor[(i + 7) % 12] = 0.8  # perfect fifth
+        templates[f"{root}m"] = minor / np.linalg.norm(minor)
+    return templates
+
+
+CHORD_TEMPLATES = _build_chord_templates()
+
+
+def hpcp_to_chord(hpcp_vector):
+    """
+    Cosine-similarity match of a 12-bin HPCP vector against the 24 major/minor
+    chord templates. Returns the chord label (e.g. 'Am', 'G') or '—' when the
+    best match is below MIN_CHORD_STRENGTH.
+    """
+    norm = np.linalg.norm(hpcp_vector)
+    if norm < 1e-6:
+        return "—"
+    normalized = hpcp_vector / norm
+    best, score = "—", MIN_CHORD_STRENGTH
+    for chord, tmpl in CHORD_TEMPLATES.items():
+        s = float(np.dot(normalized, tmpl))
+        if s > score:
+            score, best = s, chord
+    return best
 
 
 def find_downbeat_phase(audio, beat_times, time_signature, sample_rate, bpm):
     """
     Return the beat offset (0..time_signature-1) where the first downbeat falls.
-    Uses total low-frequency energy at each phase: beat 1 typically carries more
-    energy due to kick drum hits on downbeats.
+    Uses total energy at each phase: beat 1 typically carries more energy due to
+    kick drum hits on downbeats.
     """
     if len(beat_times) < time_signature * 2:
         return 0
@@ -136,21 +162,6 @@ def detect_key(audio):
     return f"{key} {scale}"
 
 
-def chord_at_time(chord_times, chords, strengths, target_time):
-    """Binary-search for the chord label at target_time."""
-    if not chord_times:
-        return "—"
-    lo, hi, idx = 0, len(chord_times) - 1, 0
-    while lo <= hi:
-        mid = (lo + hi) // 2
-        if chord_times[mid] <= target_time:
-            idx = mid
-            lo = mid + 1
-        else:
-            hi = mid - 1
-    return chords[idx] if strengths[idx] >= MIN_CHORD_STRENGTH else "—"
-
-
 def main():
     if len(sys.argv) != 4:
         print("Usage: analyze.py <stems_dir> <source_wav> <analysis_dir>", file=sys.stderr)
@@ -166,25 +177,33 @@ def main():
         sys.exit(1)
 
     print("Loading audio...", flush=True)
-    loader = es.MonoLoader(filename=str(source_wav), sampleRate=SAMPLE_RATE)
-    audio = loader()
+    audio = es.MonoLoader(filename=str(source_wav), sampleRate=SAMPLE_RATE)()
 
     print("Detecting beats...", flush=True)
     bpm, beat_times = detect_beats(audio)
     print(f"  {bpm:.1f} bpm, {len(beat_times)} beats", flush=True)
 
-    print("Building chord track...", flush=True)
-    chord_times, chords, strengths = build_chord_track(stems_dir)
-    print(f"  {len(chord_times)} chord frames", flush=True)
+    print("Computing HPCP frames...", flush=True)
+    hpcps, hop_dur = compute_hpcps(stems_dir)
+    print(f"  {len(hpcps)} HPCP frames", flush=True)
 
     print("Detecting key...", flush=True)
     key = detect_key(audio)
     print(f"  key: {key}", flush=True)
 
-    # Build per-beat list with chord label at each beat
+    # Build per-beat chord list by averaging all HPCP frames within each
+    # beat's time window [beat_time, next_beat_time). This gives one clean
+    # HPCP per beat with no bleed from neighbouring beats, then matches it
+    # against chord templates via cosine similarity.
+    beat_dur_estimate = 60.0 / bpm if bpm > 0 else 0.5
     beats_list = []
     for i, beat_time in enumerate(beat_times):
-        chord = chord_at_time(chord_times, chords, strengths, float(beat_time))
+        next_time = float(beat_times[i + 1]) if i + 1 < len(beat_times) else float(beat_time) + beat_dur_estimate
+        lo = int(float(beat_time) / hop_dur)
+        hi = max(lo + 1, int(next_time / hop_dur))
+        hi = min(hi, len(hpcps))
+        avg_hpcp = np.mean(hpcps[lo:hi], axis=0) if lo < len(hpcps) else np.zeros(12)
+        chord = hpcp_to_chord(avg_hpcp)
         beats_list.append({
             "time": float(beat_time),
             "beat": (i % TIME_SIGNATURE) + 1,
@@ -197,12 +216,10 @@ def main():
     phase = find_downbeat_phase(audio, beat_times, TIME_SIGNATURE, SAMPLE_RATE, bpm)
     print(f"  downbeat phase: {phase}", flush=True)
     beats_list = beats_list[phase:]
-    # Re-number beat positions after trimming
     for i, b in enumerate(beats_list):
         b["beat"] = (i % TIME_SIGNATURE) + 1
 
     # Group beats into bars
-    beat_dur_estimate = 60.0 / bpm if bpm > 0 else 0.5
     bars = []
     for bar_idx in range(0, len(beats_list), TIME_SIGNATURE):
         bar_beats = beats_list[bar_idx : bar_idx + TIME_SIGNATURE]
