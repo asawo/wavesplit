@@ -83,48 +83,15 @@ def compute_hpcps(stems_dir):
     return np.array(hpcps) if hpcps else np.zeros((0, 12)), hop_duration
 
 
-def _build_chord_templates():
+def detect_beats_chords(hpcps, hop_dur, beat_times):
     """
-    Build unit-normalised 12-bin HPCP templates for all 24 major/minor chords.
-    Weights: root=1.0, third=0.5, fifth=0.8 — mirrors the relative perceptual
-    salience of chord tones.
+    Use ChordsDetectionBeats to get one chord label per beat segment.
+    Returns (chords: list[str], strengths: list[float]) aligned to beat_times.
     """
-    notes = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
-    templates = {}
-    for i, root in enumerate(notes):
-        major = np.zeros(12)
-        major[i % 12] = 1.0
-        major[(i + 4) % 12] = 0.5  # major third
-        major[(i + 7) % 12] = 0.8  # perfect fifth
-        templates[root] = major / np.linalg.norm(major)
-
-        minor = np.zeros(12)
-        minor[i % 12] = 1.0
-        minor[(i + 3) % 12] = 0.5  # minor third
-        minor[(i + 7) % 12] = 0.8  # perfect fifth
-        templates[f"{root}m"] = minor / np.linalg.norm(minor)
-    return templates
-
-
-CHORD_TEMPLATES = _build_chord_templates()
-
-
-def hpcp_to_chord(hpcp_vector):
-    """
-    Cosine-similarity match of a 12-bin HPCP vector against the 24 major/minor
-    chord templates. Returns the chord label (e.g. 'Am', 'G') or '—' when the
-    best match is below MIN_CHORD_STRENGTH.
-    """
-    norm = np.linalg.norm(hpcp_vector)
-    if norm < 1e-6:
-        return "—"
-    normalized = hpcp_vector / norm
-    best, score = "—", MIN_CHORD_STRENGTH
-    for chord, tmpl in CHORD_TEMPLATES.items():
-        s = float(np.dot(normalized, tmpl))
-        if s > score:
-            score, best = s, chord
-    return best
+    ticks = np.array([float(bt) for bt in beat_times], dtype=np.float32)
+    detector = es.ChordsDetectionBeats(hopSize=hop_dur)
+    chords, strengths = detector(hpcps, ticks)
+    return list(chords), [float(s) for s in strengths]
 
 
 def find_downbeat_phase(audio, beat_times, time_signature, sample_rate, bpm):
@@ -187,23 +154,19 @@ def main():
     hpcps, hop_dur = compute_hpcps(stems_dir)
     print(f"  {len(hpcps)} HPCP frames", flush=True)
 
+    print("Detecting chords...", flush=True)
+    chords, strengths = detect_beats_chords(hpcps, hop_dur, beat_times)
+    print(f"  {len(chords)} beat chords", flush=True)
+
     print("Detecting key...", flush=True)
     key = detect_key(audio)
     print(f"  key: {key}", flush=True)
 
-    # Build per-beat chord list by averaging all HPCP frames within each
-    # beat's time window [beat_time, next_beat_time). This gives one clean
-    # HPCP per beat with no bleed from neighbouring beats, then matches it
-    # against chord templates via cosine similarity.
+    # Build per-beat list — one chord per beat from ChordsDetectionBeats
     beat_dur_estimate = 60.0 / bpm if bpm > 0 else 0.5
     beats_list = []
     for i, beat_time in enumerate(beat_times):
-        next_time = float(beat_times[i + 1]) if i + 1 < len(beat_times) else float(beat_time) + beat_dur_estimate
-        lo = int(float(beat_time) / hop_dur)
-        hi = max(lo + 1, int(next_time / hop_dur))
-        hi = min(hi, len(hpcps))
-        avg_hpcp = np.mean(hpcps[lo:hi], axis=0) if lo < len(hpcps) else np.zeros(12)
-        chord = hpcp_to_chord(avg_hpcp)
+        chord = chords[i] if i < len(chords) and strengths[i] >= MIN_CHORD_STRENGTH else "—"
         beats_list.append({
             "time": float(beat_time),
             "beat": (i % TIME_SIGNATURE) + 1,
