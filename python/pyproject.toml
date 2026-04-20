@@ -12,8 +12,7 @@ dependencies = [
     "demucs (>=4.0.1,<5.0.0)",
     "torch (>=2.7.0,<3.0.0)",
     "torchaudio (>=2.7.0,<3.0.0)",
-    "essentia (>=2.1b6.dev1110,<3.0)",
-    "beat-this (>=1.1.0,<2.0.0)"
+    "essentia (>=2.1b6.dev1110,<3.0)"
 ]
 
 

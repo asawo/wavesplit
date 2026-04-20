@@ -2,18 +2,18 @@
 """
 analyze.py <stems_dir> <source_wav> <analysis_dir>
 
-Detects beat grid and chords from the source audio using beat_this + Essentia.
+Detects beat grid and chords from the source audio using Essentia.
 Writes <analysis_dir>/analysis.json.
 """
 
 import sys
 import json
+import time
 from pathlib import Path
 
 try:
     import essentia.standard as es
     import numpy as np
-    from beat_this.inference import File2Beats
 except ImportError as e:
     print(f"Missing dependency: {e}\nRun: cd python && poetry install", file=sys.stderr)
     sys.exit(1)
@@ -21,22 +21,27 @@ except ImportError as e:
 SAMPLE_RATE = 44100
 FRAME_SIZE = 4096
 HOP_SIZE = 2048
+TIME_SIGNATURE = 4
 MIN_CHORD_STRENGTH = 0.15
 
-def detect_beats(source_wav):
+
+def detect_beats(audio):
+    """Return (bpm_float, beat_times_array) using RhythmExtractor2013."""
+    bpm, beats, _, _, _ = es.RhythmExtractor2013(method="multifeature")(audio)
+    return float(bpm), beats
+
+
+def detect_downbeat_phase(audio, beat_times, time_signature):
     """
-    Return (bpm, beat_times, downbeat_times) using beat_this.
-    beat_times and downbeat_times are numpy arrays of seconds; downbeats is a
-    subset of beats aligned to bar starts.
+    Use BeatLoudness low-frequency band energy to find which beat index is beat 1.
+    Band 0 (~20–200 Hz) captures kick drum energy; downbeats carry the most accumulated
+    kick energy across beats sharing the same bar phase.
     """
-    import torch
-    device = "mps" if torch.backends.mps.is_available() else "cpu"
-    print(f"  loading beat_this model on {device} (downloads ~50 MB on first use, then cached)...", flush=True)
-    beats, downbeats = File2Beats(checkpoint_path="final0", device=device, dbn=False)(str(source_wav))
-    beats = np.asarray(beats)
-    downbeats = np.asarray(downbeats)
-    bpm = 60.0 / float(np.median(np.diff(beats))) if len(beats) >= 2 else 120.0
-    return float(bpm), beats, downbeats
+    if len(beat_times) < time_signature * 2:
+        return 0
+    _, band_ratios = es.BeatLoudness(sampleRate=SAMPLE_RATE)(audio, beat_times)
+    kick = np.array(band_ratios)[:, 0]
+    return int(max(range(time_signature), key=lambda p: float(kick[p::time_signature].sum())))
 
 
 def load_chord_audio(stems_dir):
@@ -137,58 +142,62 @@ def main():
         print(f"source.wav not found: {source_wav}", file=sys.stderr)
         sys.exit(1)
 
+    t0 = time.time()
+
+    def elapsed():
+        return f"[{time.time() - t0:.1f}s]"
+
     print("Loading audio...", flush=True)
     audio = es.MonoLoader(filename=str(source_wav), sampleRate=SAMPLE_RATE)()
+    print(f"  done {elapsed()}", flush=True)
 
-    print("Detecting beats and downbeats...", flush=True)
-    bpm, beat_times, downbeat_times = detect_beats(source_wav)
-    print(f"  {bpm:.1f} bpm, {len(beat_times)} beats, {len(downbeat_times)} downbeats", flush=True)
+    print("Detecting beats...", flush=True)
+    bpm, beat_times = detect_beats(audio)
+    print(f"  {bpm:.1f} bpm, {len(beat_times)} beats {elapsed()}", flush=True)
+
+    print("Detecting downbeat phase...", flush=True)
+    phase = detect_downbeat_phase(audio, beat_times, TIME_SIGNATURE)
+    beat_times = beat_times[phase:]
+    print(f"  phase offset: {phase} {elapsed()}", flush=True)
 
     print("Computing HPCP frames...", flush=True)
     hpcps = compute_hpcps(stems_dir)
-    print(f"  {len(hpcps)} HPCP frames", flush=True)
+    print(f"  {len(hpcps)} HPCP frames {elapsed()}", flush=True)
 
     print("Detecting chords...", flush=True)
     chords, strengths = detect_chords(hpcps, beat_times)
-    print(f"  {len(chords)} beat chords", flush=True)
+    print(f"  {len(chords)} beat chords {elapsed()}", flush=True)
 
     print("Detecting key...", flush=True)
     key = detect_key(audio)
-    print(f"  key: {key}", flush=True)
+    print(f"  key: {key} {elapsed()}", flush=True)
 
-    # Map each downbeat time to its index in beat_times
-    downbeat_indices = {int(np.argmin(np.abs(beat_times - db))) for db in downbeat_times}
-
-    beat_num = 1
-    beats_list = []
-    for i, bt in enumerate(beat_times):
-        if i in downbeat_indices:
-            beat_num = 1
-        beats_list.append({
+    beats_list = [
+        {
             "time": float(bt),
-            "beat": beat_num,
+            "beat": (i % TIME_SIGNATURE) + 1,
             "chord": chords[i] if i < len(chords) and strengths[i] >= MIN_CHORD_STRENGTH else "—",
             "chord_strength": strengths[i] if i < len(strengths) else 0.0,
-        })
-        beat_num += 1
+        }
+        for i, bt in enumerate(beat_times)
+    ]
 
-    # Group beats into bars at downbeat boundaries
-    downbeat_idx_list = sorted(downbeat_indices)
     last_interval = (
         beats_list[-1]["time"] - beats_list[-2]["time"] if len(beats_list) >= 2 else 60.0 / bpm
     )
     bars = []
-    for bar_num, db_start in enumerate(downbeat_idx_list):
-        db_end = downbeat_idx_list[bar_num + 1] if bar_num + 1 < len(downbeat_idx_list) else len(beats_list)
-        bar_beats = beats_list[db_start:db_end]
+    for bar_idx in range(0, len(beats_list), TIME_SIGNATURE):
+        bar_beats = beats_list[bar_idx : bar_idx + TIME_SIGNATURE]
         if not bar_beats:
             continue
+        next_bar_start = bar_idx + TIME_SIGNATURE
         end_time = (
-            beats_list[db_end]["time"] if db_end < len(beats_list)
+            beats_list[next_bar_start]["time"]
+            if next_bar_start < len(beats_list)
             else bar_beats[-1]["time"] + last_interval
         )
         bars.append({
-            "index": bar_num,
+            "index": bar_idx // TIME_SIGNATURE,
             "start_time": bar_beats[0]["time"],
             "end_time": end_time,
             "beat_times": [b["time"] for b in bar_beats],
@@ -201,10 +210,11 @@ def main():
     out_path.write_text(json.dumps({
         "tempo": bpm,
         "key": key,
-        "bars": bars,
+        "time_signature": TIME_SIGNATURE,
         "beats": beats_list,
+        "bars": bars,
     }, indent=2))
-    print(f"Wrote {out_path} ({len(bars)} bars, {len(beats_list)} beats)")
+    print(f"Wrote {out_path} ({len(bars)} bars, {len(beats_list)} beats) {elapsed()}")
 
 
 if __name__ == "__main__":

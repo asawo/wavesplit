@@ -93,26 +93,6 @@ mad = ["pymad[mad] (>=0.11.3,<0.12.0)"]
 test = ["pytest (>=8.4.2)", "pytest-cov (>=7.0.0)"]
 
 [[package]]
-name = "beat-this"
-version = "1.1.0"
-description = "Beat This! beat tracker"
-optional = false
-python-versions = ">=3"
-groups = ["main"]
-files = [
-    {file = "beat_this-1.1.0-py3-none-any.whl", hash = "sha256:3f2b2d1e027c6dac380bf80c71555e3c28a4036a7f1af20129a945915a72a645"},
-    {file = "beat_this-1.1.0.tar.gz", hash = "sha256:3017c741f972972a650edcaccfe5760687fe4f5587feaa98896d90f866c2435c"},
-]
-
-[package.dependencies]
-einops = "*"
-numpy = ">=1.20"
-rotary-embedding-torch = "*"
-soxr = "*"
-torch = ">=2"
-torchaudio = "*"
-
-[[package]]
 name = "certifi"
 version = "2026.2.25"
 description = "Python package for providing Mozilla's CA Bundle."
@@ -1524,22 +1504,6 @@ files = [
 ]
 
 [[package]]
-name = "rotary-embedding-torch"
-version = "0.8.9"
-description = "Rotary Embedding - Pytorch"
-optional = false
-python-versions = "*"
-groups = ["main"]
-files = [
-    {file = "rotary_embedding_torch-0.8.9-py3-none-any.whl", hash = "sha256:700e8de9dfbefba5f9117a66652a2520648dcc60136895f0068b6a85347cab02"},
-    {file = "rotary_embedding_torch-0.8.9.tar.gz", hash = "sha256:b213f153cad1d108064d930544fb3af678d56515893d3f869a7a146f87997e3f"},
-]
-
-[package.dependencies]
-einops = ">=0.7"
-torch = ">=2.0"
-
-[[package]]
 name = "scikit-learn"
 version = "1.8.0"
 description = "A set of python modules for machine learning and data mining"
@@ -2065,4 +2029,4 @@ zstd = ["backports-zstd (>=1.0.0) ; python_version < \"3.14\""]
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.11"
-content-hash = "ce7af70ef5cbdaaf7dcbdf11a46f313a342dcd9fd3f94439b326fdfa162d792d"
+content-hash = "8c6a07c21023a1ac3c7f46090b7d1bf00898712a69146208159858df21762f02"
