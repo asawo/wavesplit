@@ -219,6 +219,7 @@ def main():
             "start_time": start_time,
             "end_time": end_time,
             "beat_times": [b["time"] for b in bar_beats],
+            "beat_chords": [b["chord"] for b in bar_beats],
             "chord": bar_beats[0]["chord"],
         })
 

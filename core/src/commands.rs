@@ -94,6 +94,7 @@ pub struct AnalysisBar {
     pub start_time: f64,
     pub end_time: f64,
     pub beat_times: Vec<f64>,
+    pub beat_chords: Vec<String>,
     pub chord: String,
 }
 

@@ -330,7 +330,7 @@
       const total = analysisData.bars.length;
       const cur = Math.max(currentBarIndex, 0);
       const start = Math.max(cur - 1, 0);
-      const end = Math.min(start + 8, total);
+      const end = Math.min(start + 4, total);
       return analysisData.bars.slice(start, end);
     })(),
   );
@@ -457,16 +457,18 @@
           class:bar-active={bar.index === currentBarIndex}
           class:bar-past={bar.index < currentBarIndex}
         >
-          <div class="beat-dots">
+          <span class="bar-num">{bar.index + 1}</span>
+          <div class="beat-cells">
             {#each bar.beat_times as _, i}
               <div
-                class="beat-dot"
-                class:beat-dot-active={isCurrentBeat(bar, i)}
-              ></div>
+                class="beat-cell"
+                class:beat-cell-active={isCurrentBeat(bar, i)}
+              >
+                <div class="beat-dot"></div>
+                <span class="beat-chord">{bar.beat_chords?.[i] ?? "—"}</span>
+              </div>
             {/each}
           </div>
-          <span class="bar-chord">{bar.chord}</span>
-          <span class="bar-num">{bar.index + 1}</span>
         </div>
       {/each}
     </div>
@@ -790,32 +792,57 @@
     opacity: 0.3;
   }
 
-  .beat-dots {
+  .beat-cells {
     display: flex;
+    gap: 2px;
+    width: 100%;
+  }
+
+  .beat-cell {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
     gap: 3px;
+    padding: 3px 1px;
+    border-radius: 3px;
+  }
+
+  .beat-cell.beat-cell-active {
+    background: rgba(76, 175, 114, 0.18);
   }
 
   .beat-dot {
-    width: 6px;
-    height: 6px;
+    width: 5px;
+    height: 5px;
     border-radius: 1px;
     background: var(--border);
+    flex-shrink: 0;
   }
 
-  .beat-dot.beat-dot-active {
+  .beat-cell-active .beat-dot {
     background: #4caf72;
   }
 
-  .bar-chord {
-    font-size: 12px;
+  .beat-chord {
+    font-size: 9px;
     font-weight: 600;
-    color: var(--fg);
+    color: var(--fg-muted);
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+    text-align: center;
+  }
+
+  .beat-cell-active .beat-chord {
+    color: var(--fg);
   }
 
   .bar-num {
     font-size: 9px;
     color: var(--fg-muted);
+    align-self: flex-start;
   }
 
   /* ── Stems ── */
