@@ -825,7 +825,7 @@
   }
 
   .beat-chord {
-    font-size: 9px;
+    font-size: 12px;
     font-weight: 600;
     color: var(--fg-muted);
     white-space: nowrap;
