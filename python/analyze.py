@@ -23,17 +23,16 @@ FRAME_SIZE = 4096
 HOP_SIZE = 2048
 MIN_CHORD_STRENGTH = 0.15
 
-# Loaded once; downloads ~50 MB checkpoint on first use (cached in torch hub dir).
-_file2beats = File2Beats(checkpoint_path="final0", device="cpu", dbn=False)
-
-
 def detect_beats(source_wav):
     """
     Return (bpm, beat_times, downbeat_times) using beat_this.
     beat_times and downbeat_times are numpy arrays of seconds; downbeats is a
     subset of beats aligned to bar starts.
     """
-    beats, downbeats = _file2beats(str(source_wav))
+    import torch
+    device = "mps" if torch.backends.mps.is_available() else "cpu"
+    print(f"  loading beat_this model on {device} (downloads ~50 MB on first use, then cached)...", flush=True)
+    beats, downbeats = File2Beats(checkpoint_path="final0", device=device, dbn=False)(str(source_wav))
     beats = np.asarray(beats)
     downbeats = np.asarray(downbeats)
     bpm = 60.0 / float(np.median(np.diff(beats))) if len(beats) >= 2 else 120.0
