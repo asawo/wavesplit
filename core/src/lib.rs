@@ -100,6 +100,7 @@ pub fn run(ctx: tauri::Context) {
             commands::open_folder,
             commands::retry_track,
             commands::get_stem_paths,
+            commands::get_analysis_data,
         ])
         .run(ctx)
         .expect("error while running tauri application");

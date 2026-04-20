@@ -1,5 +1,3 @@
-#![allow(dead_code)] // stubbed — will be used in MVP v2 (beat/note analysis)
-
 use std::path::Path;
 use std::process::Command;
 
@@ -26,8 +24,8 @@ pub fn project_dir() -> std::path::PathBuf {
 }
 
 /// Run the Python analysis script via `poetry run` inside the analysis project.
-/// Produces `analysis/timing.json` and `analysis/stems.json`.
-pub fn run(stems_dir: &Path, analysis_dir: &Path) -> Result<(), String> {
+/// Produces `analysis/analysis.json`.
+pub fn run(stems_dir: &Path, source_wav: &Path, analysis_dir: &Path) -> Result<(), String> {
     std::fs::create_dir_all(analysis_dir).map_err(|e| format!("mkdir analysis_dir: {e}"))?;
 
     let project_dir = project_dir();
@@ -36,20 +34,30 @@ pub fn run(stems_dir: &Path, analysis_dir: &Path) -> Result<(), String> {
         return Err(format!("analyze.py not found at {}", script.display()));
     }
 
-    let status = Command::new("poetry")
+    let output = Command::new("poetry")
         .args([
             "run",
             "python3",
             script.to_str().ok_or("invalid script path")?,
             stems_dir.to_str().ok_or("invalid stems_dir path")?,
+            source_wav.to_str().ok_or("invalid source_wav path")?,
             analysis_dir.to_str().ok_or("invalid analysis_dir path")?,
         ])
         .current_dir(&project_dir)
-        .status()
+        .output()
         .map_err(|e| format!("poetry not found or failed to start: {e}"))?;
 
-    if !status.success() {
-        return Err(format!("analyze.py exited with status {status}"));
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let detail = if !stderr.trim().is_empty() {
+            stderr.trim().to_string()
+        } else if !stdout.trim().is_empty() {
+            stdout.trim().to_string()
+        } else {
+            format!("exit status: {}", output.status)
+        };
+        return Err(format!("analyze.py failed: {detail}"));
     }
 
     Ok(())

@@ -35,10 +35,7 @@
   }
 
   function toggleSolo(key) {
-    const wasSoloed = stemState[key].soloed;
-    for (const k of Object.keys(stemState))
-      stemState[k] = { ...stemState[k], soloed: false };
-    if (!wasSoloed) stemState[key] = { ...stemState[key], soloed: true };
+    stemState[key] = { ...stemState[key], soloed: !stemState[key].soloed };
   }
 
   let anySoloed = $derived(Object.values(stemState).some((s) => s.soloed));
@@ -296,6 +293,55 @@
     audioCtx?.close();
   });
 
+  // ── Analysis / beat grid ───────────────────────────────────
+  let analysisData = $state(null);
+
+  $effect(() => {
+    const id = track.id;
+    if (track.status_analysis === "done") {
+      invoke("get_analysis_data", { trackId: id })
+        .then((d) => {
+          analysisData = d;
+        })
+        .catch(() => {
+          analysisData = null;
+        });
+    } else {
+      analysisData = null;
+    }
+  });
+
+  let currentBarIndex = $derived(
+    (() => {
+      if (!analysisData?.bars?.length) return -1;
+      const t = elapsedSeconds;
+      let idx = -1;
+      for (let i = 0; i < analysisData.bars.length; i++) {
+        if (analysisData.bars[i].start_time <= t) idx = i;
+        else break;
+      }
+      return idx;
+    })(),
+  );
+
+  let visibleBars = $derived(
+    (() => {
+      if (!analysisData?.bars?.length) return [];
+      const total = analysisData.bars.length;
+      const cur = Math.max(currentBarIndex, 0);
+      const start = Math.max(cur - 1, 0);
+      const end = Math.min(start + 8, total);
+      return analysisData.bars.slice(start, end);
+    })(),
+  );
+
+  function isCurrentBeat(bar, beatIdx) {
+    const t = elapsedSeconds;
+    const beatTime = bar.beat_times[beatIdx];
+    const nextTime = bar.beat_times[beatIdx + 1] ?? bar.end_time;
+    return t >= beatTime && t < nextTime;
+  }
+
   // ── Export ─────────────────────────────────────────────────
   let exportingId = $state(null);
   let exportError = $state("");
@@ -401,6 +447,30 @@
       >›</button
     >
   </div>
+
+  <!-- ── Beat grid ── -->
+  {#if analysisData && visibleBars.length}
+    <div class="beat-grid">
+      {#each visibleBars as bar}
+        <div
+          class="bar-box"
+          class:bar-active={bar.index === currentBarIndex}
+          class:bar-past={bar.index < currentBarIndex}
+        >
+          <div class="beat-dots">
+            {#each bar.beat_times as _, i}
+              <div
+                class="beat-dot"
+                class:beat-dot-active={isCurrentBeat(bar, i)}
+              ></div>
+            {/each}
+          </div>
+          <span class="bar-chord">{bar.chord}</span>
+          <span class="bar-num">{bar.index + 1}</span>
+        </div>
+      {/each}
+    </div>
+  {/if}
 
   <!-- ── Stems ── -->
   <div class="stems-section">
@@ -684,6 +754,68 @@
     min-width: 44px;
     font-size: 16px;
     letter-spacing: 0;
+  }
+
+  /* ── Beat grid ── */
+  .beat-grid {
+    display: flex;
+    gap: 4px;
+    padding: 8px 16px;
+    border-bottom: 1px solid var(--border);
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+
+  .bar-box {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 4px;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    opacity: 0.5;
+    transition: opacity 0.1s;
+  }
+
+  .bar-box.bar-active {
+    opacity: 1;
+    border-color: #4caf72;
+    background: rgba(76, 175, 114, 0.08);
+  }
+
+  .bar-box.bar-past {
+    opacity: 0.3;
+  }
+
+  .beat-dots {
+    display: flex;
+    gap: 3px;
+  }
+
+  .beat-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 1px;
+    background: var(--border);
+  }
+
+  .beat-dot.beat-dot-active {
+    background: #4caf72;
+  }
+
+  .bar-chord {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--fg);
+    white-space: nowrap;
+  }
+
+  .bar-num {
+    font-size: 9px;
+    color: var(--fg-muted);
   }
 
   /* ── Stems ── */

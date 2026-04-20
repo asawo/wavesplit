@@ -81,6 +81,41 @@ fn spawn_pipeline(
     });
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct AnalysisBeat {
+    pub time: f64,
+    pub beat: u8,
+    pub chord: String,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct AnalysisBar {
+    pub index: u32,
+    pub start_time: f64,
+    pub end_time: f64,
+    pub beat_times: Vec<f64>,
+    pub chord: String,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct AnalysisData {
+    pub tempo: f64,
+    pub key: String,
+    pub time_signature: u8,
+    pub beats: Vec<AnalysisBeat>,
+    pub bars: Vec<AnalysisBar>,
+}
+
+#[tauri::command]
+pub fn get_analysis_data(
+    track_id: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<AnalysisData, String> {
+    let path = paths::analysis_dir(&state.data_dir, &track_id).join("analysis.json");
+    let json = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    serde_json::from_str(&json).map_err(|e| e.to_string())
+}
+
 #[derive(serde::Serialize)]
 pub struct AddTrackResult {
     pub id: String,

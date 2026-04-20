@@ -199,16 +199,20 @@ pub async fn run<R: Runtime>(
     if token.is_cancelled() {
         return;
     }
-    // TODO: re-enable analysis once beat/note detection is ready (MVP v2)
+    emit(&app, &track_id, "analysis", "started", None);
+    let analysis_dir = paths::analysis_dir(&data_dir, &track_id);
+    let analysis_result = tokio::task::spawn_blocking({
+        let stems_dir = stems_dir.clone();
+        let source_wav = source_wav.clone();
+        let analysis_dir = analysis_dir.clone();
+        move || analysis::run(&stems_dir, &source_wav, &analysis_dir)
+    })
+    .await
+    .unwrap_or_else(|e| Err(e.to_string()));
+
     {
         let conn = lock_or_abort!(&db, &app, &track_id, "analysis");
-        if let Err(e) = db::update_status(
-            &conn,
-            &track_id,
-            db::Stage::Analysis,
-            db::StageStatus::Done,
-            None,
-        ) {
+        if let Err(e) = commit_result(&conn, &track_id, db::Stage::Analysis, &analysis_result) {
             emit(
                 &app,
                 &track_id,
@@ -219,7 +223,10 @@ pub async fn run<R: Runtime>(
             return;
         }
     }
-    emit(&app, &track_id, "analysis", "done", None);
+    match analysis_result {
+        Ok(_) => emit(&app, &track_id, "analysis", "done", None),
+        Err(e) => emit(&app, &track_id, "analysis", "error", Some(e)),
+    }
 }
 
 #[cfg(test)]
