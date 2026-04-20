@@ -8,12 +8,12 @@ authors = [
 requires-python = "^3.11"
 dependencies = [
     "librosa (>=0.11.0,<0.12.0)",
-    "numpy (>=1.22.0,<2.0.0)",
-    "madmom (>=0.16.1,<0.17.0)",
+    "numpy (>=2.4.4,<3.0.0)",
     "demucs (>=4.0.1,<5.0.0)",
     "torch (>=2.7.0,<3.0.0)",
     "torchaudio (>=2.7.0,<3.0.0)",
-    "essentia (>=2.1b6.dev1110,<3.0)"
+    "essentia (>=2.1b6.dev1110,<3.0)",
+    "beat-this (>=1.1.0,<2.0.0)"
 ]
 
 
