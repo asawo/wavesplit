@@ -83,13 +83,13 @@ def compute_hpcps(stems_dir):
     return np.array(hpcps) if hpcps else np.zeros((0, 12)), hop_duration
 
 
-def detect_beats_chords(hpcps, hop_dur, beat_times):
+def detect_beats_chords(hpcps, beat_times):
     """
     Use ChordsDetectionBeats to get one chord label per beat segment.
     Returns (chords: list[str], strengths: list[float]) aligned to beat_times.
     """
     ticks = np.array([float(bt) for bt in beat_times], dtype=np.float32)
-    detector = es.ChordsDetectionBeats(hopSize=hop_dur)
+    detector = es.ChordsDetectionBeats(hopSize=HOP_SIZE)
     chords, strengths = detector(hpcps, ticks)
     return list(chords), [float(s) for s in strengths]
 
@@ -155,7 +155,7 @@ def main():
     print(f"  {len(hpcps)} HPCP frames", flush=True)
 
     print("Detecting chords...", flush=True)
-    chords, strengths = detect_beats_chords(hpcps, hop_dur, beat_times)
+    chords, strengths = detect_beats_chords(hpcps, beat_times)
     print(f"  {len(chords)} beat chords", flush=True)
 
     print("Detecting key...", flush=True)
