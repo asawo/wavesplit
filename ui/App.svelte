@@ -1,10 +1,12 @@
 <script>
   import { invoke } from "@tauri-apps/api/core";
-  import { onMount } from "svelte";
+  import { listen } from "@tauri-apps/api/event";
+  import { onMount, onDestroy } from "svelte";
   import AddTrack from "./lib/AddTrack.svelte";
   import TrackList from "./lib/TrackList.svelte";
   import Playback from "./lib/Playback.svelte";
   import Setup from "./lib/Setup.svelte";
+  import PipelineToast from "./lib/PipelineToast.svelte";
 
   let tracks = $state([]);
   let refreshTracks = $state(null);
@@ -13,12 +15,34 @@
   let screen = $state("library"); // 'library' | 'playback'
   let selectedTrack = $state(null);
 
+  let toastTrack = $state(null);
+  let toastDismissTimer = null;
+  let unlistenPipeline;
+
+  onDestroy(() => {
+    unlistenPipeline?.();
+    clearTimeout(toastDismissTimer);
+  });
+
   onMount(async () => {
     try {
       ready = await invoke("check_demucs");
     } catch {
       ready = false;
     }
+    unlistenPipeline = await listen("pipeline", ({ payload }) => {
+      const { track_id, stage, status, message } = payload;
+      if (!toastTrack || toastTrack.id !== track_id) return;
+      toastTrack.stage = stage;
+      toastTrack.status = status;
+      toastTrack.message = message ?? "";
+      if (stage === "analysis" && status === "done") {
+        clearTimeout(toastDismissTimer);
+        toastDismissTimer = setTimeout(() => {
+          toastTrack = null;
+        }, 2000);
+      }
+    });
   });
 
   const PENDING_ID = "__pending__";
@@ -39,10 +63,40 @@
       },
       ...tracks,
     ];
+    toastTrack = {
+      id: null,
+      title,
+      stage: "download",
+      status: "pending",
+      message: "",
+    };
   }
 
-  function handleAdded(_id) {
-    refreshTracks?.();
+  async function handleAdded(id) {
+    await refreshTracks?.();
+    if (toastTrack) {
+      if (id) {
+        toastTrack.id = id;
+        const track = tracks.find((t) => t.id === id);
+        if (track) toastTrack.title = track.title;
+      } else {
+        toastTrack = null;
+      }
+    }
+  }
+
+  async function handleCancelToast() {
+    const id = toastTrack?.id;
+    toastTrack = null;
+    if (id) {
+      await invoke("delete_track", { id });
+      refreshTracks?.();
+    }
+  }
+
+  function dismissToast() {
+    clearTimeout(toastDismissTimer);
+    toastTrack = null;
   }
 
   function openPlayback(track) {
@@ -91,6 +145,18 @@
     </div>
   </div>
 </div>
+
+{#if toastTrack}
+  <PipelineToast
+    title={toastTrack.title}
+    stage={toastTrack.stage}
+    status={toastTrack.status}
+    message={toastTrack.message}
+    canCancel={!!toastTrack.id}
+    onCancel={handleCancelToast}
+    onDismiss={dismissToast}
+  />
+{/if}
 
 {#if !ready}
   <div class="overlay fade-in">
