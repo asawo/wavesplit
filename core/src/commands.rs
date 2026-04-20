@@ -86,6 +86,8 @@ pub struct AnalysisBeat {
     pub time: f64,
     pub beat: u8,
     pub chord: String,
+    #[serde(default)]
+    pub chord_strength: f64,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -95,6 +97,8 @@ pub struct AnalysisBar {
     pub end_time: f64,
     pub beat_times: Vec<f64>,
     pub beat_chords: Vec<String>,
+    #[serde(default)]
+    pub beat_chord_strengths: Vec<f64>,
     pub chord: String,
 }
 

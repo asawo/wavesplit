@@ -2,7 +2,7 @@
 """
 analyze.py <stems_dir> <source_wav> <analysis_dir>
 
-Detects beat grid and chords from the source audio using Essentia.
+Detects beat grid and chords from the source audio using Essentia + madmom.
 Writes <analysis_dir>/analysis.json.
 """
 
@@ -13,6 +13,7 @@ from pathlib import Path
 try:
     import essentia.standard as es
     import numpy as np
+    from madmom.features.downbeats import DBNDownBeatTrackingProcessor, RNNDownBeatProcessor
 except ImportError as e:
     print(f"Missing dependency: {e}\nRun: cd python && poetry install", file=sys.stderr)
     sys.exit(1)
@@ -21,30 +22,63 @@ SAMPLE_RATE = 44100
 FRAME_SIZE = 4096
 HOP_SIZE = 2048
 TIME_SIGNATURE = 4
-MIN_CHORD_STRENGTH = 0.4
+MIN_CHORD_STRENGTH = 0.15
 
 
-def detect_beats(audio):
-    """Return (bpm_float, beat_times_array) using RhythmExtractor2013."""
-    bpm, beats, _, _, _ = es.RhythmExtractor2013(method="multifeature")(audio)
-    return float(bpm), beats
+def detect_beats(source_wav):
+    """
+    Return (bpm, beat_times) using madmom DBNDownBeatTrackingProcessor.
+    beat_times starts at the first detected downbeat (beat_number == 1).
+    """
+    beats = DBNDownBeatTrackingProcessor(beats_per_bar=[TIME_SIGNATURE], fps=100)(
+        RNNDownBeatProcessor()(str(source_wav))
+    )
+    first_db = int(np.argmax(beats[:, 1] == 1))
+    beats = beats[first_db:]
+    beat_times = beats[:, 0]
+    bpm = 60.0 / float(np.median(np.diff(beat_times))) if len(beat_times) >= 2 else 120.0
+    return float(bpm), beat_times
+
+
+def load_chord_audio(stems_dir):
+    """
+    Mix bass + other + vocals (everything except drums) for chord detection.
+    other.wav is required; bass and vocals are added when present.
+    """
+    stems_dir = Path(stems_dir)
+    if not (stems_dir / "other.wav").exists():
+        raise FileNotFoundError(
+            f"other.wav not found in {stems_dir} — stems stage may not have completed"
+        )
+
+    arrays = [
+        es.MonoLoader(filename=str(stems_dir / f"{name}.wav"), sampleRate=SAMPLE_RATE)()
+        for name in ("other", "bass", "vocals")
+        if (stems_dir / f"{name}.wav").exists()
+    ]
+
+    if len(arrays) == 1:
+        return arrays[0]
+
+    max_len = max(len(a) for a in arrays)
+    mixed = np.zeros(max_len, dtype=np.float32)
+    for a in arrays:
+        mixed[: len(a)] += a
+    peak = np.max(np.abs(mixed))
+    if peak > 1e-6:
+        mixed /= peak
+    return mixed
 
 
 def compute_hpcps(stems_dir):
     """
-    Load the chordal stem (other.wav, falling back to vocals.wav), apply
-    EqualLoudness, and return hpcps as np.ndarray shape (N, 12).
+    Load the chord stem mix, apply EqualLoudness, return HPCP matrix (N, 12).
 
-    Uses HPCP with harmonics=8 — essential for distinguishing chord quality
-    (major vs minor). Without harmonics the HPCP only captures the fundamental
-    and cannot reliably identify chord type.
+    Uses harmonics=8 — essential for major/minor chord quality detection.
+    HOP_SIZE must match the hopSize passed to ChordsDetectionBeats for correct
+    frame-to-time alignment.
     """
-    stems_dir = Path(stems_dir)
-    candidate = stems_dir / "other.wav"
-    if not candidate.exists():
-        candidate = stems_dir / "vocals.wav"
-
-    audio = es.EqualLoudness()(es.MonoLoader(filename=str(candidate), sampleRate=SAMPLE_RATE)())
+    audio = es.EqualLoudness()(load_chord_audio(stems_dir))
 
     windowing = es.Windowing(type="blackmanharris62")
     spectrum = es.Spectrum()
@@ -62,7 +96,7 @@ def compute_hpcps(stems_dir):
         minFrequency=20.0,
         maxFrequency=3500.0,
         weightType="squaredCosine",
-        nonLinear=False,
+        nonLinear=True,
         windowSize=4.0 / 3.0,
         harmonics=8,
     )
@@ -107,8 +141,8 @@ def main():
     print("Loading audio...", flush=True)
     audio = es.MonoLoader(filename=str(source_wav), sampleRate=SAMPLE_RATE)()
 
-    print("Detecting beats...", flush=True)
-    bpm, beat_times = detect_beats(audio)
+    print("Detecting beats and downbeats...", flush=True)
+    bpm, beat_times = detect_beats(source_wav)
     print(f"  {bpm:.1f} bpm, {len(beat_times)} beats", flush=True)
 
     print("Computing HPCP frames...", flush=True)
@@ -123,16 +157,19 @@ def main():
     key = detect_key(audio)
     print(f"  key: {key}", flush=True)
 
-    beat_dur_estimate = 60.0 / bpm if bpm > 0 else 0.5
     beats_list = [
         {
-            "time": float(beat_time),
+            "time": float(bt),
             "beat": (i % TIME_SIGNATURE) + 1,
             "chord": chords[i] if i < len(chords) and strengths[i] >= MIN_CHORD_STRENGTH else "—",
+            "chord_strength": strengths[i] if i < len(strengths) else 0.0,
         }
-        for i, beat_time in enumerate(beat_times)
+        for i, bt in enumerate(beat_times)
     ]
 
+    last_interval = (
+        beats_list[-1]["time"] - beats_list[-2]["time"] if len(beats_list) >= 2 else 60.0 / bpm
+    )
     bars = []
     for bar_idx in range(0, len(beats_list), TIME_SIGNATURE):
         bar_beats = beats_list[bar_idx : bar_idx + TIME_SIGNATURE]
@@ -142,7 +179,7 @@ def main():
         end_time = (
             beats_list[next_bar_start]["time"]
             if next_bar_start < len(beats_list)
-            else bar_beats[-1]["time"] + beat_dur_estimate
+            else bar_beats[-1]["time"] + last_interval
         )
         bars.append({
             "index": bar_idx // TIME_SIGNATURE,
@@ -150,6 +187,7 @@ def main():
             "end_time": end_time,
             "beat_times": [b["time"] for b in bar_beats],
             "beat_chords": [b["chord"] for b in bar_beats],
+            "beat_chord_strengths": [b["chord_strength"] for b in bar_beats],
             "chord": bar_beats[0]["chord"],
         })
 
