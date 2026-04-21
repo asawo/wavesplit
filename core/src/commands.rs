@@ -88,6 +88,8 @@ pub struct AnalysisBeat {
     pub chord: String,
     #[serde(default)]
     pub chord_strength: f64,
+    #[serde(default)]
+    pub pickup: bool,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -107,6 +109,8 @@ pub struct AnalysisData {
     pub tempo: f64,
     pub key: String,
     pub time_signature: u8,
+    #[serde(default)]
+    pub downbeat_confidence: f64,
     pub beats: Vec<AnalysisBeat>,
     pub bars: Vec<AnalysisBar>,
 }

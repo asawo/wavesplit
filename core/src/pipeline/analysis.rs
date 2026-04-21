@@ -34,7 +34,10 @@ pub fn run(stems_dir: &Path, source_wav: &Path, analysis_dir: &Path) -> Result<(
         return Err(format!("analyze.py not found at {}", script.display()));
     }
 
-    let output = Command::new("poetry")
+    use std::io::{BufRead, BufReader};
+    use std::process::Stdio;
+
+    let mut child = Command::new("poetry")
         .args([
             "run",
             "python3",
@@ -44,16 +47,26 @@ pub fn run(stems_dir: &Path, source_wav: &Path, analysis_dir: &Path) -> Result<(
             analysis_dir.to_str().ok_or("invalid analysis_dir path")?,
         ])
         .current_dir(&project_dir)
-        .output()
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
         .map_err(|e| format!("poetry not found or failed to start: {e}"))?;
+
+    let stdout = child.stdout.take().expect("stdout was piped");
+    std::thread::spawn(move || {
+        BufReader::new(stdout)
+            .lines()
+            .for_each(|l| eprintln!("[analyze] {}", l.unwrap_or_default()));
+    });
+
+    let output = child
+        .wait_with_output()
+        .map_err(|e| format!("failed to wait for analyze.py: {e}"))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        let stdout = String::from_utf8_lossy(&output.stdout);
         let detail = if !stderr.trim().is_empty() {
             stderr.trim().to_string()
-        } else if !stdout.trim().is_empty() {
-            stdout.trim().to_string()
         } else {
             format!("exit status: {}", output.status)
         };
