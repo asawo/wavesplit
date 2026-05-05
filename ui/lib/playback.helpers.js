@@ -36,12 +36,10 @@ export function extractWaveform(audioBuffer, numPoints) {
 
 // Pure version of the component's toggleSolo — takes/returns a plain stemState object.
 export function applyToggleSolo(stemState, key) {
-  const wasSoloed = stemState[key].soloed;
-  const reset = Object.fromEntries(
-    Object.entries(stemState).map(([k, v]) => [k, { ...v, soloed: false }]),
-  );
-  if (!wasSoloed) reset[key] = { ...reset[key], soloed: true };
-  return reset;
+  return {
+    ...stemState,
+    [key]: { ...stemState[key], soloed: !stemState[key].soloed },
+  };
 }
 
 // Pure version of the component's isMuted(key).
