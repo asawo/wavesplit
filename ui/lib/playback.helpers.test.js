@@ -142,6 +142,36 @@ describe("applyToggleSolo", () => {
     expect(next.drums.soloed).toBe(true);
     expect(next.vocals.soloed).toBe(true);
   });
+  it("soloing all four stems makes all audible", () => {
+    let s = makeStemState();
+    s = applyToggleSolo(s, "vocals");
+    s = applyToggleSolo(s, "drums");
+    s = applyToggleSolo(s, "bass");
+    s = applyToggleSolo(s, "other");
+    for (const k of ["vocals", "drums", "bass", "other"]) {
+      expect(s[k].soloed).toBe(true);
+    }
+  });
+  it("un-soloing one of multiple keeps the others soloed", () => {
+    const s = makeStemState({ vocals: true, drums: true, bass: true });
+    const next = applyToggleSolo(s, "drums");
+    expect(next.drums.soloed).toBe(false);
+    expect(next.vocals.soloed).toBe(true);
+    expect(next.bass.soloed).toBe(true);
+  });
+  it("un-soloing the last soloed stem clears all solos", () => {
+    const s = makeStemState({ bass: true });
+    const next = applyToggleSolo(s, "bass");
+    expect(Object.values(next).every((v) => !v.soloed)).toBe(true);
+  });
+  it("preserves volume and mute when toggling solo", () => {
+    const s = makeStemState({}, { bass: true });
+    s.bass.volume = 0.5;
+    const next = applyToggleSolo(s, "bass");
+    expect(next.bass.soloed).toBe(true);
+    expect(next.bass.muted).toBe(true);
+    expect(next.bass.volume).toBe(0.5);
+  });
   it("does not mutate the original stemState", () => {
     const s = makeStemState();
     applyToggleSolo(s, "bass");
@@ -167,13 +197,28 @@ describe("computeMuted", () => {
     expect(computeMuted(s, "vocals")).toBe(false);
   });
   it("mute flag is ignored when any stem is soloed", () => {
-    // bass is both muted and non-soloed; vocals is soloed
     const s = makeStemState({ vocals: true }, { bass: true });
-    // bass mute flag is true but it should just follow the solo logic
-    expect(computeMuted(s, "bass")).toBe(true); // non-soloed → muted regardless
-    // if bass were the soloed stem, the mute flag should not override it
+    expect(computeMuted(s, "bass")).toBe(true);
     const s2 = makeStemState({ bass: true }, { bass: true });
-    expect(computeMuted(s2, "bass")).toBe(false); // soloed → audible even if mute flag is set
+    expect(computeMuted(s2, "bass")).toBe(false);
+  });
+  it("multiple soloed stems are all audible", () => {
+    const s = makeStemState({ vocals: true, bass: true });
+    expect(computeMuted(s, "vocals")).toBe(false);
+    expect(computeMuted(s, "bass")).toBe(false);
+    expect(computeMuted(s, "drums")).toBe(true);
+    expect(computeMuted(s, "other")).toBe(true);
+  });
+  it("all stems soloed means none are muted", () => {
+    const s = makeStemState({
+      vocals: true,
+      drums: true,
+      bass: true,
+      other: true,
+    });
+    for (const k of ["vocals", "drums", "bass", "other"]) {
+      expect(computeMuted(s, k)).toBe(false);
+    }
   });
 });
 
