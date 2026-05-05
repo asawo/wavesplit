@@ -35,10 +35,7 @@
   }
 
   function toggleSolo(key) {
-    const wasSoloed = stemState[key].soloed;
-    for (const k of Object.keys(stemState))
-      stemState[k] = { ...stemState[k], soloed: false };
-    if (!wasSoloed) stemState[key] = { ...stemState[key], soloed: true };
+    stemState[key] = { ...stemState[key], soloed: !stemState[key].soloed };
   }
 
   let anySoloed = $derived(Object.values(stemState).some((s) => s.soloed));

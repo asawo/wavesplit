@@ -136,11 +136,11 @@ describe("applyToggleSolo", () => {
     expect(next.bass.soloed).toBe(false);
     expect(Object.values(next).every((v) => !v.soloed)).toBe(true);
   });
-  it("switches solo from A to B — only B ends up soloed", () => {
+  it("allows multiple stems to be soloed simultaneously", () => {
     const s = makeStemState({ vocals: true });
     const next = applyToggleSolo(s, "drums");
     expect(next.drums.soloed).toBe(true);
-    expect(next.vocals.soloed).toBe(false);
+    expect(next.vocals.soloed).toBe(true);
   });
   it("does not mutate the original stemState", () => {
     const s = makeStemState();
