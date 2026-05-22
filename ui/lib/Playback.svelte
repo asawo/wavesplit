@@ -315,6 +315,22 @@
   }
 </script>
 
+<svelte:window
+  onkeydown={(e) => {
+    if (!active) return;
+    if (e.key === " ") {
+      e.preventDefault();
+      handlePlayPause();
+    } else if (e.key === "ArrowLeft") {
+      e.preventDefault();
+      skipBy(-10);
+    } else if (e.key === "ArrowRight") {
+      e.preventDefault();
+      skipBy(10);
+    }
+  }}
+/>
+
 <div class="playback">
   <!-- ── Header ── -->
   <header class="playback-header">
