@@ -15,13 +15,13 @@
   },
   "dependencies": {
     "@fontsource/oleo-script-swash-caps": "^5.2.8",
-    "@tauri-apps/api": "^2",
-    "@tauri-apps/plugin-dialog": "^2.7.0",
-    "@tauri-apps/plugin-opener": "^2.5.3"
+    "@tauri-apps/api": "~2.10.1",
+    "@tauri-apps/plugin-dialog": "~2.7.0",
+    "@tauri-apps/plugin-opener": "~2.5.3"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^4.0.0",
-    "@tauri-apps/cli": "^2",
+    "@tauri-apps/cli": "~2.11.2",
     "@testing-library/svelte": "^5.0.0",
     "happy-dom": "^20.8.9",
     "prettier": "^3.4.0",
