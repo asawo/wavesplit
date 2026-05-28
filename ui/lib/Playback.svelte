@@ -25,9 +25,9 @@
 
   // ── Loop ────────────────────────────────────────────────────
   let loopActive = $state(false);
-  let loopStart = $state(1 / 3);
-  let loopEnd = $state(2 / 3);
-  let draggingMarker = $state(null);
+  let loopStart = $state(0);
+  let loopEnd = $state(1);
+  let draggingMarker = null;
   let loopStartPct = $derived(loopStart * 100);
   let loopEndPct = $derived(loopEnd * 100);
   const MIN_LOOP_FRACTION = 0.02;
@@ -121,8 +121,8 @@
     buffers = {};
     waveformData = {};
     loopActive = false;
-    loopStart = 1 / 3;
-    loopEnd = 2 / 3;
+    loopStart = 0;
+    loopEnd = 1;
 
     try {
       if (!audioCtx) {
@@ -173,10 +173,7 @@
 
   // ── Playback control ───────────────────────────────────────
 
-  async function startPlayback() {
-    if (!audioCtx || Object.keys(buffers).length === 0) return;
-    if (audioCtx.state !== "running") await audioCtx.resume();
-    const offset = Math.max(0, Math.min(startOffset, duration - 0.01));
+  function startSourcesFrom(offset) {
     startTime = audioCtx.currentTime;
     for (const { key } of STEMS) {
       const buf = buffers[key];
@@ -187,6 +184,12 @@
       src.start(0, offset);
       sourceNodes[key] = src;
     }
+  }
+
+  async function startPlayback() {
+    if (!audioCtx || Object.keys(buffers).length === 0) return;
+    if (audioCtx.state !== "running") await audioCtx.resume();
+    startSourcesFrom(Math.max(0, Math.min(startOffset, duration - 0.01)));
     schedTick();
   }
 
@@ -283,11 +286,12 @@
     }
   }
 
-  function onMarkerDown(e, which) {
+  function onMarkerPointerDown(e, which) {
     e.preventDefault();
     e.stopPropagation();
     draggingMarker = which;
     const wrap = e.currentTarget.parentElement;
+    e.currentTarget.setPointerCapture(e.pointerId);
 
     function onMove(ev) {
       const rect = wrap.getBoundingClientRect();
@@ -300,38 +304,12 @@
     function onUp() {
       draggingMarker = null;
       suppressSeek = true;
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
+      e.currentTarget.removeEventListener("pointermove", onMove);
+      e.currentTarget.removeEventListener("pointerup", onUp);
     }
 
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
-  }
-
-  function onMarkerTouchStart(e, which) {
-    e.preventDefault();
-    e.stopPropagation();
-    draggingMarker = which;
-    const wrap = e.currentTarget.parentElement;
-
-    function onTouchMove(ev) {
-      const touch = ev.touches[0];
-      const rect = wrap.getBoundingClientRect();
-      applyMarkerDrag(
-        which,
-        Math.max(0, Math.min(1, (touch.clientX - rect.left) / rect.width)),
-      );
-    }
-
-    function onTouchEnd() {
-      draggingMarker = null;
-      suppressSeek = true;
-      window.removeEventListener("touchmove", onTouchMove);
-      window.removeEventListener("touchend", onTouchEnd);
-    }
-
-    window.addEventListener("touchmove", onTouchMove, { passive: false });
-    window.addEventListener("touchend", onTouchEnd);
+    e.currentTarget.addEventListener("pointermove", onMove);
+    e.currentTarget.addEventListener("pointerup", onUp);
   }
 
   function schedTick() {
@@ -353,16 +331,7 @@
     if (loopActive && !draggingMarker && pos / duration >= loopEnd) {
       stopSources();
       startOffset = loopStart * duration;
-      startTime = audioCtx.currentTime;
-      for (const { key } of STEMS) {
-        const buf = buffers[key];
-        if (!buf) continue;
-        const src = audioCtx.createBufferSource();
-        src.buffer = buf;
-        src.connect(gainNodes[key]);
-        src.start(0, startOffset);
-        sourceNodes[key] = src;
-      }
+      startSourcesFrom(startOffset);
       playhead = loopStart;
       rafId = requestAnimationFrame(tick);
       return;
@@ -503,15 +472,13 @@
           <div
             class="loop-marker"
             style="left:{loopStartPct}%"
-            onmousedown={(e) => onMarkerDown(e, "start")}
-            ontouchstart={(e) => onMarkerTouchStart(e, "start")}
+            onpointerdown={(e) => onMarkerPointerDown(e, "start")}
           ></div>
           <!-- svelte-ignore a11y_no_static_element_interactions -->
           <div
             class="loop-marker"
             style="left:{loopEndPct}%"
-            onmousedown={(e) => onMarkerDown(e, "end")}
-            ontouchstart={(e) => onMarkerTouchStart(e, "end")}
+            onpointerdown={(e) => onMarkerPointerDown(e, "end")}
           ></div>
         {/if}
         <div class="playhead" style="left:{playhead * 100}%">
@@ -883,11 +850,8 @@
   }
 
   .loop-btn {
-    font-size: 12px;
-    letter-spacing: 0;
     display: inline-flex;
     align-items: center;
-    gap: 4px;
     padding: 0 6px;
   }
 
