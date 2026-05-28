@@ -23,6 +23,15 @@
   let playing = $state(false);
   let playhead = $state(0); // 0–1 fraction
 
+  // ── Loop ────────────────────────────────────────────────────
+  let loopActive = $state(false);
+  let loopStart = $state(0);
+  let loopEnd = $state(1);
+  let draggingMarker = null;
+  let loopStartPct = $derived(loopStart * 100);
+  let loopEndPct = $derived(loopEnd * 100);
+  const MIN_LOOP_FRACTION = 0.02;
+
   // ── Stem mixer ─────────────────────────────────────────────
   let stemState = $state(
     Object.fromEntries(
@@ -111,6 +120,9 @@
     playhead = 0;
     buffers = {};
     waveformData = {};
+    loopActive = false;
+    loopStart = 0;
+    loopEnd = 1;
 
     try {
       if (!audioCtx) {
@@ -161,10 +173,7 @@
 
   // ── Playback control ───────────────────────────────────────
 
-  async function startPlayback() {
-    if (!audioCtx || Object.keys(buffers).length === 0) return;
-    if (audioCtx.state !== "running") await audioCtx.resume();
-    const offset = Math.max(0, Math.min(startOffset, duration - 0.01));
+  function startSourcesFrom(offset) {
     startTime = audioCtx.currentTime;
     for (const { key } of STEMS) {
       const buf = buffers[key];
@@ -175,6 +184,12 @@
       src.start(0, offset);
       sourceNodes[key] = src;
     }
+  }
+
+  async function startPlayback() {
+    if (!audioCtx || Object.keys(buffers).length === 0) return;
+    if (audioCtx.state !== "running") await audioCtx.resume();
+    startSourcesFrom(Math.max(0, Math.min(startOffset, duration - 0.01)));
     schedTick();
   }
 
@@ -213,7 +228,9 @@
   }
 
   async function seek(fraction) {
-    const safeFraction = Math.max(0, Math.min(1, fraction));
+    let safeFraction = Math.max(0, Math.min(1, fraction));
+    if (loopActive)
+      safeFraction = Math.max(loopStart, Math.min(loopEnd, safeFraction));
     const was = playing;
     if (was) {
       stopSources();
@@ -228,7 +245,13 @@
     }
   }
 
+  let suppressSeek = false;
+
   function seekToClick(e) {
+    if (suppressSeek) {
+      suppressSeek = false;
+      return;
+    }
     const rect = e.currentTarget.getBoundingClientRect();
     seek((e.clientX - rect.left) / rect.width);
   }
@@ -240,6 +263,56 @@
 
   function skipBy(seconds) {
     seek((getCurrentPos() + seconds) / Math.max(duration, 0.001));
+  }
+
+  function toggleLoop() {
+    loopActive = !loopActive;
+    if (loopActive) {
+      const dur = Math.max(duration, 0.001);
+      loopStart = playhead;
+      loopEnd = Math.min(1, playhead + 10 / dur);
+    }
+  }
+
+  // ── Loop marker drag ────────────────────────────────────────
+
+  function applyMarkerDrag(which, frac) {
+    if (which === "start") {
+      loopStart = Math.max(0, Math.min(frac, loopEnd - MIN_LOOP_FRACTION));
+      if (playhead < loopStart) seek(loopStart);
+    } else {
+      loopEnd = Math.min(1, Math.max(frac, loopStart + MIN_LOOP_FRACTION));
+      if (playhead > loopEnd) seek(loopStart);
+    }
+  }
+
+  let cleanupDrag = null;
+
+  function onMarkerPointerDown(e, which) {
+    e.preventDefault();
+    e.stopPropagation();
+    draggingMarker = which;
+    const wrap = e.currentTarget.parentElement;
+
+    function onMove(ev) {
+      const rect = wrap.getBoundingClientRect();
+      applyMarkerDrag(
+        which,
+        Math.max(0, Math.min(1, (ev.clientX - rect.left) / rect.width)),
+      );
+    }
+
+    function onUp() {
+      draggingMarker = null;
+      suppressSeek = true;
+      cleanupDrag = null;
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    }
+
+    cleanupDrag = onUp;
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
   }
 
   function schedTick() {
@@ -257,6 +330,16 @@
   function tick() {
     if (!playing || !audioCtx) return;
     const pos = startOffset + (audioCtx.currentTime - startTime);
+
+    if (loopActive && !draggingMarker && pos / duration >= loopEnd) {
+      stopSources();
+      startOffset = loopStart * duration;
+      startSourcesFrom(startOffset);
+      playhead = loopStart;
+      rafId = requestAnimationFrame(tick);
+      return;
+    }
+
     if (pos >= duration) {
       stopSources();
       playing = false;
@@ -288,6 +371,7 @@
   });
 
   onDestroy(() => {
+    cleanupDrag?.();
     cancelTick();
     stopSources();
     audioCtx?.close();
@@ -327,6 +411,9 @@
     } else if (e.key === "ArrowRight") {
       e.preventDefault();
       skipBy(10);
+    } else if (e.key === "l" || e.key === "L") {
+      e.preventDefault();
+      toggleLoop();
     }
   }}
 />
@@ -380,6 +467,24 @@
             />
           {/each}
         </svg>
+        {#if loopActive}
+          <div
+            class="loop-region"
+            style="left:{loopStartPct}%; width:{loopEndPct - loopStartPct}%"
+          ></div>
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <div
+            class="loop-marker"
+            style="left:{loopStartPct}%"
+            onpointerdown={(e) => onMarkerPointerDown(e, "start")}
+          ></div>
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <div
+            class="loop-marker"
+            style="left:{loopEndPct}%"
+            onpointerdown={(e) => onMarkerPointerDown(e, "end")}
+          ></div>
+        {/if}
         <div class="playhead" style="left:{playhead * 100}%">
           <div class="playhead-dot"></div>
         </div>
@@ -413,6 +518,18 @@
     <button class="transport-btn" title="Skip to end" onclick={() => seek(1)}
       >›</button
     >
+    <div class="transport-spacer"></div>
+    <button
+      class="transport-btn loop-btn"
+      class:active={loopActive}
+      title={loopActive
+        ? "Disable section loop (L)"
+        : "Enable section loop (L)"}
+      disabled={loading || !!loadError}
+      onclick={toggleLoop}
+    >
+      <span class="material-symbols-rounded">loop</span>
+    </button>
   </div>
 
   <!-- ── Stems ── -->
@@ -625,6 +742,46 @@
     display: block;
   }
 
+  .loop-region {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    background: rgba(76, 175, 114, 0.12);
+    border-left: 1.5px solid rgba(76, 175, 114, 0.5);
+    border-right: 1.5px solid rgba(76, 175, 114, 0.5);
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  .loop-marker {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 12px;
+    transform: translateX(-50%);
+    cursor: ew-resize;
+    touch-action: none;
+    z-index: 3;
+  }
+
+  .loop-marker::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 50%;
+    width: 2px;
+    transform: translateX(-50%);
+    background: rgba(76, 175, 114, 0.8);
+    border-radius: 1px;
+  }
+
+  .loop-marker:hover::after,
+  .loop-marker:active::after {
+    background: #4caf72;
+    width: 3px;
+  }
+
   .playhead {
     position: absolute;
     inset: 0 auto;
@@ -691,6 +848,27 @@
   .transport-btn:disabled {
     opacity: 0.35;
     cursor: default;
+  }
+
+  .transport-spacer {
+    width: 12px;
+  }
+
+  .loop-btn {
+    display: inline-flex;
+    align-items: center;
+    padding: 0 6px;
+  }
+
+  .loop-btn .material-symbols-rounded {
+    font-family: "Material Symbols Rounded Variable";
+    font-size: 16px;
+  }
+
+  .loop-btn.active {
+    background: rgba(76, 175, 114, 0.15);
+    border-color: #4caf72;
+    color: #4caf72;
   }
 
   .play-btn {

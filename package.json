@@ -14,6 +14,7 @@
     "format:check": "prettier --check \"ui/**/*.{svelte,js,css}\""
   },
   "dependencies": {
+    "@fontsource-variable/material-symbols-rounded": "^5.2.45",
     "@fontsource/oleo-script-swash-caps": "^5.2.8",
     "@tauri-apps/api": "~2.10.1",
     "@tauri-apps/plugin-dialog": "~2.7.0",

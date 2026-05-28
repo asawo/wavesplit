@@ -20,6 +20,7 @@
 
   let filterQuery = $state("");
   let sortKey = $state("newest");
+  let filterInput = $state(null);
 
   function matchesFilter(track) {
     if (!filterQuery) return true;
@@ -179,6 +180,20 @@
   }
 </script>
 
+<svelte:window
+  onkeydown={(e) => {
+    if (
+      e.key === "s" &&
+      !e.metaKey &&
+      !e.ctrlKey &&
+      e.target === document.body
+    ) {
+      e.preventDefault();
+      filterInput?.focus();
+    }
+  }}
+/>
+
 <div class="track-list">
   {#if tracks.length > 0}
     <div class="toolbar">
@@ -186,6 +201,7 @@
         class="filter-input"
         placeholder="Search"
         bind:value={filterQuery}
+        bind:this={filterInput}
       />
       <select class="sort-select" bind:value={sortKey}>
         <option value="newest">Newest</option>
