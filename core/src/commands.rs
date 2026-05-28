@@ -1,5 +1,4 @@
 use chrono::Utc;
-use rusqlite::Connection;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use tauri::AppHandle;
@@ -46,22 +45,23 @@ impl Drop for TaskGuard {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
-fn spawn_pipeline(
+fn spawn_pipeline<R: tauri::Runtime>(
     track_id: String,
     source: pipeline::Source,
-    db: Arc<Mutex<Connection>>,
-    data_dir: std::path::PathBuf,
-    demucs_dir: std::path::PathBuf,
-    token: CancellationToken,
-    app: AppHandle,
+    state: &AppState,
+    app: AppHandle<R>,
     start_stage: pipeline::StartStage,
-    tasks: Arc<Mutex<HashMap<String, CancellationToken>>>,
 ) {
-    tasks
+    let token = CancellationToken::new();
+    state
+        .tasks
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .insert(track_id.clone(), token.clone());
+    let tasks = Arc::clone(&state.tasks);
+    let db = Arc::clone(&state.db);
+    let data_dir = state.data_dir.clone();
+    let demucs_dir = state.demucs_dir.clone();
     tokio::spawn(async move {
         let _guard = TaskGuard {
             tasks,
@@ -222,18 +222,12 @@ async fn add_track(
         .map_err(|e| e.to_string())?;
     }
 
-    // Spawn pipeline in background with a cancellation token.
-    let token = CancellationToken::new();
     spawn_pipeline(
         id.clone(),
         source,
-        Arc::clone(&state.db),
-        state.data_dir.clone(),
-        state.demucs_dir.clone(),
-        token,
+        &state,
         app,
         pipeline::StartStage::Download,
-        Arc::clone(&state.tasks),
     );
 
     Ok(id)
@@ -304,9 +298,9 @@ pub fn open_folder(path: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub async fn retry_track(
+pub async fn retry_track<R: tauri::Runtime>(
     id: String,
-    app: AppHandle,
+    app: AppHandle<R>,
     state: tauri::State<'_, AppState>,
 ) -> Result<(), String> {
     // Don't retry if already running
@@ -360,18 +354,7 @@ pub async fn retry_track(
         }
     };
 
-    let token = CancellationToken::new();
-    spawn_pipeline(
-        id,
-        source,
-        Arc::clone(&state.db),
-        state.data_dir.clone(),
-        state.demucs_dir.clone(),
-        token,
-        app,
-        start_stage,
-        Arc::clone(&state.tasks),
-    );
+    spawn_pipeline(id, source, &state, app, start_stage);
 
     Ok(())
 }
@@ -381,6 +364,7 @@ mod tests {
     use super::*;
     use std::collections::HashMap;
     use std::sync::{Arc, Mutex};
+    use tauri::{test::mock_app, Manager};
     use tokio_util::sync::CancellationToken;
 
     #[test]
@@ -411,6 +395,139 @@ mod tests {
                 validate_youtube_url(url).is_err(),
                 "should reject ({label}): {url}"
             );
+        }
+    }
+
+    #[tokio::test]
+    async fn spawn_pipeline_adds_and_removes_task() {
+        let db = Arc::new(Mutex::new(
+            crate::db::open(std::path::Path::new(":memory:")).unwrap(),
+        ));
+        let tasks: Arc<Mutex<HashMap<String, CancellationToken>>> =
+            Arc::new(Mutex::new(HashMap::new()));
+        let state = AppState {
+            db: Arc::clone(&db),
+            data_dir: std::path::PathBuf::from("/tmp"),
+            demucs_dir: std::path::PathBuf::from("/tmp"),
+            tasks: Arc::clone(&tasks),
+        };
+
+        let app = mock_app();
+        let id = "test-spawn-id".to_string();
+
+        spawn_pipeline(
+            id.clone(),
+            pipeline::Source::Local(std::path::PathBuf::from("/dev/null")),
+            &state,
+            app.handle().clone(),
+            pipeline::StartStage::Analysis,
+        );
+
+        assert!(
+            tasks.lock().unwrap().contains_key(&id),
+            "pipeline task should be added to map on spawn"
+        );
+
+        let start = std::time::Instant::now();
+        let timeout = std::time::Duration::from_secs(5);
+        while tasks.lock().unwrap().contains_key(&id) {
+            if start.elapsed() > timeout {
+                panic!("pipeline task did not complete within timeout");
+            }
+            tokio::task::yield_now().await;
+        }
+    }
+
+    #[tokio::test]
+    async fn retry_track_rejects_running_track() {
+        let db = Arc::new(Mutex::new(
+            crate::db::open(std::path::Path::new(":memory:")).unwrap(),
+        ));
+        let tasks: Arc<Mutex<HashMap<String, CancellationToken>>> =
+            Arc::new(Mutex::new(HashMap::new()));
+        let app_state = AppState {
+            db: Arc::clone(&db),
+            data_dir: std::path::PathBuf::from("/tmp"),
+            demucs_dir: std::path::PathBuf::from("/tmp"),
+            tasks: Arc::clone(&tasks),
+        };
+
+        tasks
+            .lock()
+            .unwrap()
+            .insert("test-retry-id".to_string(), CancellationToken::new());
+
+        let app = mock_app();
+        app.manage(app_state);
+        let state = app.state::<AppState>();
+
+        let result = retry_track("test-retry-id".to_string(), app.handle().clone(), state).await;
+
+        assert!(result.is_err());
+        assert!(
+            result.unwrap_err().contains("already processing"),
+            "should reject already running track"
+        );
+    }
+
+    #[tokio::test]
+    async fn retry_track_spawns_for_error_track() {
+        let db = Arc::new(Mutex::new(
+            crate::db::open(std::path::Path::new(":memory:")).unwrap(),
+        ));
+        let tasks: Arc<Mutex<HashMap<String, CancellationToken>>> =
+            Arc::new(Mutex::new(HashMap::new()));
+        let app_state = AppState {
+            db: Arc::clone(&db),
+            data_dir: std::path::PathBuf::from("/tmp"),
+            demucs_dir: std::path::PathBuf::from("/tmp"),
+            tasks: Arc::clone(&tasks),
+        };
+
+        {
+            let conn = db.lock().unwrap();
+            crate::db::insert_track(
+                &conn,
+                &crate::db::Track {
+                    id: "test-retry-spawn".to_string(),
+                    title: "Retry Test".to_string(),
+                    source_type: "youtube".to_string(),
+                    source_url: Some("https://youtube.com/watch?v=test".to_string()),
+                    source_path: None,
+                    created_at: "2024-01-01T00:00:00Z".to_string(),
+                    sort_order: 1,
+                    duration_ms: None,
+                    status_download: "done".to_string(),
+                    status_stems: "done".to_string(),
+                    status_analysis: "error".to_string(),
+                    error_message: Some("analysis failed".to_string()),
+                    export_path: None,
+                    artist: None,
+                },
+            )
+            .unwrap();
+        }
+
+        let app = mock_app();
+        app.manage(app_state);
+        let state = app.state::<AppState>();
+
+        let result = retry_track("test-retry-spawn".to_string(), app.handle().clone(), state).await;
+
+        assert!(result.is_ok(), "retry should succeed: {:?}", result.err());
+
+        assert!(
+            tasks.lock().unwrap().contains_key("test-retry-spawn"),
+            "pipeline task should be spawned"
+        );
+
+        let start = std::time::Instant::now();
+        let timeout = std::time::Duration::from_secs(5);
+        while tasks.lock().unwrap().contains_key("test-retry-spawn") {
+            if start.elapsed() > timeout {
+                panic!("pipeline task did not complete within timeout");
+            }
+            tokio::task::yield_now().await;
         }
     }
 
