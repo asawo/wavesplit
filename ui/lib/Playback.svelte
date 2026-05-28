@@ -286,6 +286,8 @@
     }
   }
 
+  let cleanupDrag = null;
+
   function onMarkerPointerDown(e, which) {
     e.preventDefault();
     e.stopPropagation();
@@ -303,10 +305,12 @@
     function onUp() {
       draggingMarker = null;
       suppressSeek = true;
+      cleanupDrag = null;
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
     }
 
+    cleanupDrag = onUp;
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
   }
@@ -367,6 +371,7 @@
   });
 
   onDestroy(() => {
+    cleanupDrag?.();
     cancelTick();
     stopSources();
     audioCtx?.close();
@@ -755,6 +760,7 @@
     width: 12px;
     transform: translateX(-50%);
     cursor: ew-resize;
+    touch-action: none;
     z-index: 3;
   }
 
