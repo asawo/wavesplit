@@ -291,7 +291,6 @@
     e.stopPropagation();
     draggingMarker = which;
     const wrap = e.currentTarget.parentElement;
-    e.currentTarget.setPointerCapture(e.pointerId);
 
     function onMove(ev) {
       const rect = wrap.getBoundingClientRect();
@@ -304,12 +303,12 @@
     function onUp() {
       draggingMarker = null;
       suppressSeek = true;
-      e.currentTarget.removeEventListener("pointermove", onMove);
-      e.currentTarget.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
     }
 
-    e.currentTarget.addEventListener("pointermove", onMove);
-    e.currentTarget.addEventListener("pointerup", onUp);
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
   }
 
   function schedTick() {
