@@ -67,6 +67,76 @@ async fn download_demucs(app: AppHandle, state: tauri::State<'_, AppState>) -> R
     setup::download(&demucs_dir, &app).await
 }
 
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run(ctx: tauri::Context) {
+    tauri::Builder::default()
+        .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
+        .setup(|app| {
+            let data_dir = app.path().app_data_dir()?;
+            std::fs::create_dir_all(data_dir.join("tracks"))?;
+
+            let log_dir = app
+                .path()
+                .app_log_dir()
+                .unwrap_or_else(|_| data_dir.join("logs"));
+            std::fs::create_dir_all(&log_dir).ok();
+            let file_appender = tracing_appender::rolling::daily(&log_dir, "wavesplit.log");
+            let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
+            registry()
+                .with(
+                    fmt::Layer::new()
+                        .json()
+                        .with_writer(non_blocking)
+                        .with_target(true)
+                        .with_thread_ids(true),
+                )
+                .with(
+                    fmt::Layer::new()
+                        .with_writer(std::io::stderr)
+                        .with_target(true)
+                        .with_thread_ids(true),
+                )
+                .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")))
+                .init();
+            app.manage(LogGuard(guard));
+
+            let demucs_dir = data_dir.join("demucs");
+            std::fs::create_dir_all(&demucs_dir)?;
+
+            let db_path = data_dir.join("wavesplit.db");
+            let conn = db::open(&db_path)?;
+
+            if let Err(e) = db::mark_interrupted(&conn) {
+                tracing::warn!(error = %e, "failed to mark interrupted tracks");
+            }
+
+            app.manage(AppState {
+                db: Arc::new(Mutex::new(conn)),
+                data_dir,
+                demucs_dir,
+                tasks: Arc::new(Mutex::new(HashMap::new())),
+            });
+
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![
+            list_tracks,
+            delete_track,
+            check_demucs,
+            download_demucs,
+            commands::add_track_youtube,
+            commands::add_track_local,
+            commands::export_stems,
+            commands::update_track_meta,
+            commands::open_folder,
+            commands::retry_track,
+            commands::get_stem_paths,
+        ])
+        .run(ctx)
+        .expect("error while running tauri application");
+}
+
 #[cfg(test)]
 pub(crate) mod test_support {
     use std::sync::{Arc, Mutex};
@@ -137,74 +207,4 @@ pub(crate) mod test_support {
             events.push((level, visitor.0));
         }
     }
-}
-
-#[cfg_attr(mobile, tauri::mobile_entry_point)]
-pub fn run(ctx: tauri::Context) {
-    tauri::Builder::default()
-        .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_dialog::init())
-        .setup(|app| {
-            let data_dir = app.path().app_data_dir()?;
-            std::fs::create_dir_all(data_dir.join("tracks"))?;
-
-            let log_dir = app
-                .path()
-                .app_log_dir()
-                .unwrap_or_else(|_| data_dir.join("logs"));
-            std::fs::create_dir_all(&log_dir).ok();
-            let file_appender = tracing_appender::rolling::daily(&log_dir, "wavesplit.log");
-            let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
-            registry()
-                .with(
-                    fmt::Layer::new()
-                        .json()
-                        .with_writer(non_blocking)
-                        .with_target(true)
-                        .with_thread_ids(true),
-                )
-                .with(
-                    fmt::Layer::new()
-                        .with_writer(std::io::stderr)
-                        .with_target(true)
-                        .with_thread_ids(true),
-                )
-                .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")))
-                .init();
-            app.manage(LogGuard(guard));
-
-            let demucs_dir = data_dir.join("demucs");
-            std::fs::create_dir_all(&demucs_dir)?;
-
-            let db_path = data_dir.join("wavesplit.db");
-            let conn = db::open(&db_path)?;
-
-            if let Err(e) = db::mark_interrupted(&conn) {
-                tracing::warn!(error = %e, "failed to mark interrupted tracks");
-            }
-
-            app.manage(AppState {
-                db: Arc::new(Mutex::new(conn)),
-                data_dir,
-                demucs_dir,
-                tasks: Arc::new(Mutex::new(HashMap::new())),
-            });
-
-            Ok(())
-        })
-        .invoke_handler(tauri::generate_handler![
-            list_tracks,
-            delete_track,
-            check_demucs,
-            download_demucs,
-            commands::add_track_youtube,
-            commands::add_track_local,
-            commands::export_stems,
-            commands::update_track_meta,
-            commands::open_folder,
-            commands::retry_track,
-            commands::get_stem_paths,
-        ])
-        .run(ctx)
-        .expect("error while running tauri application");
 }
