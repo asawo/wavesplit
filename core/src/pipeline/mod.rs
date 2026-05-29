@@ -311,8 +311,7 @@ mod tests {
 
     #[tokio::test]
     async fn run_emits_trace_info_on_analysis_stage_boundaries() {
-        let (capture, guard) = crate::test_support::TracingCapture::new();
-        let _ = guard;
+        let (capture, _guard) = crate::test_support::TracingCapture::new();
 
         let conn = open_mem();
         insert_pending(&conn, "t-trace");
