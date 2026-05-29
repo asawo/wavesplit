@@ -5,6 +5,8 @@ on:
     branches: [main]
     paths:
       - 'ui/**'
+      - 'vite.config.js'
+      - 'vitest.config.js'
       - 'package.json'
       - 'pnpm-lock.yaml'
       - '.github/workflows/ci-frontend.yml'
@@ -12,6 +14,8 @@ on:
     branches: [main]
     paths:
       - 'ui/**'
+      - 'vite.config.js'
+      - 'vitest.config.js'
       - 'package.json'
       - 'pnpm-lock.yaml'
       - '.github/workflows/ci-frontend.yml'
