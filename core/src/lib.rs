@@ -10,6 +10,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Manager};
 use tokio_util::sync::CancellationToken;
+use tracing_subscriber::{fmt, prelude::*, registry, EnvFilter};
 
 pub struct AppState {
     pub db: Arc<Mutex<Connection>>,
@@ -62,6 +63,78 @@ async fn download_demucs(app: AppHandle, state: tauri::State<'_, AppState>) -> R
     setup::download(&demucs_dir, &app).await
 }
 
+#[cfg(test)]
+pub(crate) mod test_support {
+    use std::sync::{Arc, Mutex};
+    use tracing::field::{Field, Visit};
+    use tracing::Event;
+    use tracing::Subscriber;
+    use tracing_subscriber::layer::Context;
+    use tracing_subscriber::layer::SubscriberExt;
+    use tracing_subscriber::Layer;
+
+    #[derive(Clone, Default)]
+    pub struct TracingCapture {
+        events: Arc<Mutex<Vec<(String, String)>>>,
+    }
+
+    impl TracingCapture {
+        pub fn new() -> (Self, tracing::subscriber::DefaultGuard) {
+            let this = Self::default();
+            let layer = CaptureLayer {
+                capture: this.clone(),
+            };
+            let subscriber = tracing_subscriber::registry().with(layer);
+            let guard = tracing::subscriber::set_default(subscriber);
+            (this, guard)
+        }
+
+        pub fn events(&self) -> Vec<(String, String)> {
+            self.events.lock().unwrap().clone()
+        }
+
+        pub fn contains(&self, level: &str, needle: &str) -> bool {
+            self.events()
+                .iter()
+                .any(|(lvl, msg)| lvl == level && msg.contains(needle))
+        }
+    }
+
+    struct CaptureLayer {
+        capture: TracingCapture,
+    }
+
+    struct CaptureVisitor(String);
+
+    impl Visit for CaptureVisitor {
+        fn record_str(&mut self, field: &Field, value: &str) {
+            if !self.0.is_empty() {
+                self.0.push(' ');
+            }
+            use std::fmt::Write;
+            write!(self.0, "{}={:?}", field.name(), value).unwrap();
+        }
+
+        fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
+            if !self.0.is_empty() {
+                self.0.push(' ');
+            }
+            use std::fmt::Write;
+            write!(self.0, "{}={:?}", field.name(), value).unwrap();
+        }
+    }
+
+    impl<S: Subscriber> Layer<S> for CaptureLayer {
+        fn on_event(&self, event: &Event<'_>, _ctx: Context<'_, S>) {
+            let mut visitor = CaptureVisitor(String::new());
+            event.record(&mut visitor);
+            let level = event.metadata().level().to_string();
+            let mut events = self.capture.events.lock().unwrap();
+            events.push((level, visitor.0));
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run(ctx: tauri::Context) {
     tauri::Builder::default()
@@ -71,13 +144,41 @@ pub fn run(ctx: tauri::Context) {
             let data_dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(data_dir.join("tracks"))?;
 
+            let log_dir = app
+                .path()
+                .app_log_dir()
+                .unwrap_or_else(|_| data_dir.join("logs"));
+            std::fs::create_dir_all(&log_dir).ok();
+            let file_appender = tracing_appender::rolling::daily(&log_dir, "wavesplit.log");
+            let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
+            // Leak the guard so it lives for the application lifetime
+            std::mem::forget(_guard);
+            registry()
+                .with(
+                    fmt::Layer::new()
+                        .json()
+                        .with_writer(non_blocking)
+                        .with_target(true)
+                        .with_thread_ids(true),
+                )
+                .with(
+                    fmt::Layer::new()
+                        .with_writer(std::io::stderr)
+                        .with_target(true)
+                        .with_thread_ids(true),
+                )
+                .with(EnvFilter::from_default_env())
+                .init();
+
             let demucs_dir = data_dir.join("demucs");
             std::fs::create_dir_all(&demucs_dir)?;
 
             let db_path = data_dir.join("wavesplit.db");
             let conn = db::open(&db_path)?;
 
-            db::mark_interrupted(&conn).unwrap_or_default();
+            if let Err(e) = db::mark_interrupted(&conn) {
+                tracing::warn!(error = %e, "failed to mark interrupted tracks");
+            }
 
             app.manage(AppState {
                 db: Arc::new(Mutex::new(conn)),

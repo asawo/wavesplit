@@ -59,6 +59,8 @@ pub fn separate(
         Ok(())
     })();
 
-    let _ = std::fs::remove_dir_all(&tmp);
+    if let Err(e) = std::fs::remove_dir_all(&tmp) {
+        tracing::warn!(error = %e, "failed to remove demucs temp dir");
+    }
     result
 }

@@ -155,14 +155,16 @@ pub async fn download(demucs_dir: &Path, app: &AppHandle) -> Result<(), String> 
             .await
             .map_err(|e| format!("write error: {e}"))?;
 
-        let _ = app.emit(
+        if let Err(e) = app.emit(
             "setup:progress",
             DownloadProgress {
                 downloaded_mb: downloaded as f64 / 1_048_576.0,
                 total_mb: total_bytes.map(|t| t as f64 / 1_048_576.0),
                 percent: total_bytes.map(|t| (downloaded * 100 / t) as u32),
             },
-        );
+        ) {
+            tracing::trace!(error = %e, "setup:progress emit failed");
+        }
     }
 
     use tokio::io::AsyncWriteExt;

@@ -56,7 +56,10 @@ fn spawn_pipeline<R: tauri::Runtime>(
     state
         .tasks
         .lock()
-        .unwrap_or_else(|e| e.into_inner())
+        .unwrap_or_else(|e| {
+            tracing::warn!(track_id, "tasks mutex poisoned, recovering");
+            e.into_inner()
+        })
         .insert(track_id.clone(), token.clone());
     let tasks = Arc::clone(&state.tasks);
     let db = Arc::clone(&state.db);
@@ -129,7 +132,10 @@ pub async fn add_track_youtube(
             });
         }
     }
-    let title = pipeline::download::youtube_title(&url).unwrap_or_else(|| url.clone());
+    let title = pipeline::download::youtube_title(&url).unwrap_or_else(|| {
+        tracing::info!("failed to extract YouTube title, falling back to URL");
+        url.clone()
+    });
     let id = add_track(
         Source::Youtube(url.clone()),
         title,
@@ -467,6 +473,55 @@ mod tests {
         assert!(
             result.unwrap_err().contains("already processing"),
             "should reject already running track"
+        );
+    }
+
+    #[tokio::test]
+    async fn spawn_pipeline_logs_warning_on_poisoned_mutex() {
+        let tasks: Arc<Mutex<HashMap<String, CancellationToken>>> =
+            Arc::new(Mutex::new(HashMap::new()));
+        // Poison the mutex
+        let tasks2 = Arc::clone(&tasks);
+        let _ = std::thread::spawn(move || {
+            let _guard = tasks2.lock().unwrap();
+            panic!("intentional panic to poison mutex");
+        })
+        .join();
+
+        let (capture, _guard) = crate::test_support::TracingCapture::new();
+
+        let db = Arc::new(Mutex::new(
+            crate::db::open(std::path::Path::new(":memory:")).unwrap(),
+        ));
+        let state = AppState {
+            db,
+            data_dir: std::path::PathBuf::from("/tmp"),
+            demucs_dir: std::path::PathBuf::from("/tmp"),
+            tasks: Arc::clone(&tasks),
+        };
+
+        let app = tauri::test::mock_app();
+        let id = "test-poison-id".to_string();
+
+        spawn_pipeline(
+            id.clone(),
+            pipeline::Source::Local(std::path::PathBuf::from("/dev/null")),
+            &state,
+            app.handle().clone(),
+            pipeline::StartStage::Analysis,
+        );
+
+        assert!(
+            capture.contains("WARN", "tasks mutex poisoned"),
+            "expected warning about poisoned mutex, got: {:?}",
+            capture.events()
+        );
+
+        // Should still have inserted the task despite the poison
+        let guard = tasks.lock().unwrap_or_else(|e| e.into_inner());
+        assert!(
+            guard.contains_key(&id),
+            "task should be in map despite poison"
         );
     }
 
