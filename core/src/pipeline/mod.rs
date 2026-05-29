@@ -115,7 +115,7 @@ pub async fn run<R: Runtime>(
         if token.is_cancelled() {
             return;
         }
-        info!(track_id = %track_id, stage = "download", status = "started");
+        info!(%track_id, stage = "download", status = "started");
         emit(&app, &track_id, "download", "started", None);
         let dl_result = tokio::task::spawn_blocking({
             let source_wav = source_wav.clone();
@@ -142,11 +142,11 @@ pub async fn run<R: Runtime>(
         }
         match dl_result {
             Ok(_) => {
-                info!(track_id = %track_id, stage = "download", status = "done");
+                info!(%track_id, stage = "download", status = "done");
                 emit(&app, &track_id, "download", "done", None);
             }
             Err(e) => {
-                error!(track_id = %track_id, stage = "download", status = "error", message = %e);
+                error!(%track_id, stage = "download", status = "error", message = %e);
                 emit(&app, &track_id, "download", "error", Some(e));
                 return;
             }
@@ -170,7 +170,7 @@ pub async fn run<R: Runtime>(
         if token.is_cancelled() {
             return;
         }
-        info!(track_id = %track_id, stage = "stems", status = "started");
+        info!(%track_id, stage = "stems", status = "started");
         emit(&app, &track_id, "stems", "started", None);
         let stems_result = tokio::task::spawn_blocking({
             let source_wav = source_wav.clone();
@@ -195,11 +195,11 @@ pub async fn run<R: Runtime>(
         }
         match stems_result {
             Ok(_) => {
-                info!(track_id = %track_id, stage = "stems", status = "done");
+                info!(%track_id, stage = "stems", status = "done");
                 emit(&app, &track_id, "stems", "done", None);
             }
             Err(e) => {
-                error!(track_id = %track_id, stage = "stems", status = "error", message = %e);
+                error!(%track_id, stage = "stems", status = "error", message = %e);
                 emit(&app, &track_id, "stems", "error", Some(e));
                 return;
             }
@@ -210,7 +210,7 @@ pub async fn run<R: Runtime>(
     if token.is_cancelled() {
         return;
     }
-    info!(track_id = %track_id, stage = "analysis", status = "started");
+    info!(%track_id, stage = "analysis", status = "started");
     // TODO: re-enable analysis once beat/note detection is ready (MVP v2)
     {
         let conn = lock_or_abort!(&db, &app, &track_id, "analysis");
@@ -231,7 +231,7 @@ pub async fn run<R: Runtime>(
             return;
         }
     }
-    info!(track_id = %track_id, stage = "analysis", status = "done");
+    info!(%track_id, stage = "analysis", status = "done");
     emit(&app, &track_id, "analysis", "done", None);
 }
 
@@ -311,7 +311,7 @@ mod tests {
 
     #[tokio::test]
     async fn run_emits_trace_info_on_analysis_stage_boundaries() {
-        let (_capture, _guard) = crate::test_support::TracingCapture::new();
+        let (capture, _guard) = crate::test_support::TracingCapture::new();
 
         let conn = open_mem();
         insert_pending(&conn, "t-trace");
@@ -332,14 +332,14 @@ mod tests {
         .await;
 
         assert!(
-            _capture.contains("INFO", r#"stage="analysis" status="started""#),
+            capture.contains("INFO", r#"stage="analysis" status="started""#),
             "expected analysis started info event, got: {:?}",
-            _capture.events()
+            capture.events()
         );
         assert!(
-            _capture.contains("INFO", r#"stage="analysis" status="done""#),
+            capture.contains("INFO", r#"stage="analysis" status="done""#),
             "expected analysis done info event, got: {:?}",
-            _capture.events()
+            capture.events()
         );
     }
 

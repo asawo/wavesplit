@@ -22,6 +22,10 @@ pub struct AppState {
     pub tasks: Arc<Mutex<HashMap<String, CancellationToken>>>,
 }
 
+/// Holds the tracing-appender guard so log buffers flush on shutdown.
+#[allow(dead_code)]
+struct LogGuard(tracing_appender::non_blocking::WorkerGuard);
+
 #[tauri::command]
 fn list_tracks(state: tauri::State<AppState>) -> Result<Vec<db::Track>, String> {
     let conn = state
@@ -150,9 +154,7 @@ pub fn run(ctx: tauri::Context) {
                 .unwrap_or_else(|_| data_dir.join("logs"));
             std::fs::create_dir_all(&log_dir).ok();
             let file_appender = tracing_appender::rolling::daily(&log_dir, "wavesplit.log");
-            let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
-            // Leak the guard so it lives for the application lifetime
-            std::mem::forget(_guard);
+            let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
             registry()
                 .with(
                     fmt::Layer::new()
@@ -167,8 +169,9 @@ pub fn run(ctx: tauri::Context) {
                         .with_target(true)
                         .with_thread_ids(true),
                 )
-                .with(EnvFilter::from_default_env())
+                .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")))
                 .init();
+            app.manage(LogGuard(guard));
 
             let demucs_dir = data_dir.join("demucs");
             std::fs::create_dir_all(&demucs_dir)?;

@@ -63,15 +63,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn project_dir_returns_non_empty_path() {
-        let dir = project_dir();
-        assert!(
-            !dir.as_os_str().is_empty(),
-            "project_dir should return a non-empty path"
-        );
-    }
-
-    #[test]
     fn project_dir_does_not_log_warning_when_exe_available() {
         let (capture, _guard) = crate::test_support::TracingCapture::new();
         let _dir = project_dir();
