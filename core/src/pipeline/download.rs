@@ -87,6 +87,10 @@ pub fn youtube_title(url: &str) -> Option<String> {
             url,
         ])
         .output()
+        .map_err(|e| {
+            tracing::debug!(error = %e, "yt-dlp title extraction failed");
+            e
+        })
         .ok()?;
     if output.status.success() {
         Some(String::from_utf8_lossy(&output.stdout).trim().to_string())

@@ -8,6 +8,8 @@ use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter, Runtime};
 use tokio_util::sync::CancellationToken;
 
+use tracing::{error, info, warn};
+
 use crate::db;
 use crate::paths;
 use crate::setup;
@@ -76,8 +78,7 @@ fn emit<R: Runtime>(
             message,
         },
     ) {
-        // TODO: replace with structured logging once #22 lands
-        eprintln!("[pipeline] emit failed for track={track_id} stage={stage}: {e}");
+        warn!(track_id, stage, error = %e, "pipeline emit failed");
     }
 }
 
@@ -114,6 +115,7 @@ pub async fn run<R: Runtime>(
         if token.is_cancelled() {
             return;
         }
+        info!(%track_id, stage = "download", status = "started");
         emit(&app, &track_id, "download", "started", None);
         let dl_result = tokio::task::spawn_blocking({
             let source_wav = source_wav.clone();
@@ -139,8 +141,12 @@ pub async fn run<R: Runtime>(
             }
         }
         match dl_result {
-            Ok(_) => emit(&app, &track_id, "download", "done", None),
+            Ok(_) => {
+                info!(%track_id, stage = "download", status = "done");
+                emit(&app, &track_id, "download", "done", None);
+            }
             Err(e) => {
+                error!(%track_id, stage = "download", status = "error", message = %e);
                 emit(&app, &track_id, "download", "error", Some(e));
                 return;
             }
@@ -164,6 +170,7 @@ pub async fn run<R: Runtime>(
         if token.is_cancelled() {
             return;
         }
+        info!(%track_id, stage = "stems", status = "started");
         emit(&app, &track_id, "stems", "started", None);
         let stems_result = tokio::task::spawn_blocking({
             let source_wav = source_wav.clone();
@@ -187,8 +194,12 @@ pub async fn run<R: Runtime>(
             }
         }
         match stems_result {
-            Ok(_) => emit(&app, &track_id, "stems", "done", None),
+            Ok(_) => {
+                info!(%track_id, stage = "stems", status = "done");
+                emit(&app, &track_id, "stems", "done", None);
+            }
             Err(e) => {
+                error!(%track_id, stage = "stems", status = "error", message = %e);
                 emit(&app, &track_id, "stems", "error", Some(e));
                 return;
             }
@@ -199,6 +210,7 @@ pub async fn run<R: Runtime>(
     if token.is_cancelled() {
         return;
     }
+    info!(%track_id, stage = "analysis", status = "started");
     // TODO: re-enable analysis once beat/note detection is ready (MVP v2)
     {
         let conn = lock_or_abort!(&db, &app, &track_id, "analysis");
@@ -219,6 +231,7 @@ pub async fn run<R: Runtime>(
             return;
         }
     }
+    info!(%track_id, stage = "analysis", status = "done");
     emit(&app, &track_id, "analysis", "done", None);
 }
 
@@ -294,6 +307,78 @@ mod tests {
         let track = crate::db::get_track(&conn, "t2").unwrap().unwrap();
         assert_eq!(track.status_stems, "error");
         assert_eq!(track.error_message.as_deref(), Some("demucs crashed"));
+    }
+
+    #[tokio::test]
+    async fn run_emits_trace_info_on_analysis_stage_boundaries() {
+        let (capture, _guard) = crate::test_support::TracingCapture::new();
+
+        let conn = open_mem();
+        insert_pending(&conn, "t-trace");
+        let db = Arc::new(Mutex::new(conn));
+
+        let app = tauri::test::mock_app();
+
+        run(
+            "t-trace".to_string(),
+            Source::Local(std::path::PathBuf::from("/dev/null")),
+            db,
+            std::path::PathBuf::from("/tmp"),
+            std::path::PathBuf::from("/tmp"),
+            CancellationToken::new(),
+            app.handle().clone(),
+            StartStage::Analysis,
+        )
+        .await;
+
+        assert!(
+            capture.contains("INFO", r#"stage="analysis" status="started""#),
+            "expected analysis started info event, got: {:?}",
+            capture.events()
+        );
+        assert!(
+            capture.contains("INFO", r#"stage="analysis" status="done""#),
+            "expected analysis done info event, got: {:?}",
+            capture.events()
+        );
+    }
+
+    #[tokio::test]
+    async fn run_emits_trace_error_when_analysis_db_write_fails() {
+        let (capture, _guard) = crate::test_support::TracingCapture::new();
+
+        let conn = crate::db::open(std::path::Path::new(":memory:")).unwrap();
+        conn.execute("DROP TABLE tracks", []).unwrap();
+        let db = Arc::new(Mutex::new(conn));
+
+        let app = tauri::test::mock_app();
+
+        run(
+            "t-trace-fail".to_string(),
+            Source::Local(std::path::PathBuf::from("/dev/null")),
+            db,
+            std::path::PathBuf::from("/tmp"),
+            std::path::PathBuf::from("/tmp"),
+            CancellationToken::new(),
+            app.handle().clone(),
+            StartStage::Analysis,
+        )
+        .await;
+
+        assert!(
+            capture.contains("INFO", r#"stage="analysis" status="started""#),
+            "expected analysis started info event"
+        );
+        assert!(
+            capture.contains("INFO", "track_id=t-trace-fail"),
+            "expected track_id in event fields, got: {:?}",
+            capture.events()
+        );
+        // The DB write fails after "started", so "done" should not appear
+        assert!(
+            !capture.contains("INFO", r#"stage="analysis" status="done""#),
+            "analysis done should not be emitted on DB failure"
+        );
     }
 
     /// Simulate a DB failure mid-pipeline: drop the schema so the analysis

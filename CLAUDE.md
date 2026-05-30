@@ -9,7 +9,7 @@ A cross-platform desktop practice app built with Tauri (Rust backend + Svelte fr
 - Separates into stems: bass, drums, vocals, other (Demucs via Poetry)
 - Manages a library of tracks with metadata (title, artist)
 - Exports stems + original audio to a user-chosen folder
-- Full playback screen: synchronized 4-stem Web Audio engine, waveform display, per-stem mute/solo/volume
+- Full playback screen: synchronized 4-stem Web Audio engine, waveform display, per-stem mute/solo/volume, section loop
 - Analysis stage is **stubbed out** — marked done immediately, no actual beat/note detection yet (TODO: MVP v3)
 
 Primary use case: bass player practice with isolated stems.
@@ -51,7 +51,7 @@ Each stage updates the DB and emits a `pipeline` Tauri event `{ track_id, stage,
 | `ui/App.svelte` | Two-screen layout (library ↔ playback slide transition), screen/selectedTrack state |
 | `ui/lib/AddTrack.svelte` | YouTube URL input + local file picker |
 | `ui/lib/TrackList.svelte` | Library: filter, sort, inline edit, progress, export, delete; emits onPlay for ready tracks |
-| `ui/lib/Playback.svelte` | Playback screen: Web Audio engine, waveforms, transport, stem mute/solo/volume, export |
+| `ui/lib/Playback.svelte` | Playback screen: Web Audio engine, waveforms, transport, stem mute/solo/volume, section loop, export |
 | `ui/lib/playback.helpers.js` | Pure functions: formatTime, hashStr, makeWaveformBars, extractWaveform, applyToggleSolo, computeMuted |
 | `python/analyze.py` | Python analysis script (not called yet) |
 | `python/pyproject.toml` | Poetry project: librosa, numpy, demucs (torch 2.6.0) |
@@ -64,9 +64,18 @@ Status values: `pending | done | error`
 
 Migrations are additive via `.ok()` on `ALTER TABLE` in `db::open()`.
 
+## Logging
+
+Structured logging via `tracing` (configured in `lib.rs::run`):
+
+- **File**: JSON format, daily rolling, written to `app_log_dir` (`~/Library/Logs/com.wavesplit.app/` on macOS), falls back to `<app_data_dir>/logs/`
+- **stderr**: Human-readable format, visible during `just dev`
+- **Default level**: `info` — override with `RUST_LOG` env var (e.g. `RUST_LOG=debug just dev`)
+- The `NonBlockingGuard` is held in a `LogGuard` struct managed by Tauri (not leaked) so logs flush on shutdown
+
 ## Stack
 
-- **Backend**: Rust (Tauri 2) — tokio async, rusqlite (bundled SQLite), uuid, chrono
+- **Backend**: Rust (Tauri 2) — tokio async, rusqlite (bundled SQLite), uuid, chrono, tracing
 - **Frontend**: Svelte 5 (runes), Vite, pnpm
 - **External tools**: yt-dlp, ffmpeg (system install); demucs (via Poetry venv in `python/`)
 - **Analysis**: Python 3.11+, Poetry, librosa, numpy, demucs
@@ -119,9 +128,9 @@ CI runs on every push/PR (`ci.yml` for Rust, `ci-frontend.yml` for frontend). Bo
 | Phase   | Status | Features |
 |---------|--------|----------|
 | MVP     | Done   | YouTube/local input, stem separation, library, export |
-| MVP v2  | Done   | Playback engine, waveforms, stem mute/solo/volume |
+| MVP v2  | Done   | Playback engine, waveforms, stem mute/solo/volume, section loop |
 | MVP v3  | Next   | Beat tracking, bass note display |
-| Later   | —      | Chord detection, loop sections |
+| Later   | —      | Chord detection |
 
 ## Commit & PR conventions
 

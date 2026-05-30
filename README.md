@@ -16,6 +16,7 @@ Built with Tauri (Rust + Svelte).
 - Stem separation via [Demucs](https://github.com/facebookresearch/demucs) (bass, drums, vocals, other)
 - Full playback screen with synchronized 4-stem audio engine
 - Per-stem mute, solo, and volume control
+- Section loop with draggable start/end markers
 - Export stems + original audio to any folder
 - Library with search and sort (by newest, oldest, title, or artist)
 - Track metadata editing (title and artist)
@@ -59,7 +60,11 @@ Once a track shows **Ready**, click anywhere on its row to open the playback scr
 
 Click anywhere on the waveform to seek to that position.
 
-### 4. Mix the stems
+### 4. Loop a section
+
+Click the **loop** button (or press **L**) to create a loop region starting at the current playhead. Drag the start/end markers on the waveform to adjust the loop boundaries. Playback automatically wraps back to the loop start when it reaches the end. Press **L** again to disable looping.
+
+### 5. Mix the stems
 
 Each stem row has three controls:
 
@@ -67,11 +72,11 @@ Each stem row has three controls:
 - **S** — solo that stem (exclusive: only the soloed stem plays; click again to clear)
 - **Volume slider** — adjust the level independently
 
-### 5. Edit track metadata
+### 6. Edit track metadata
 
 In the library, click the track title or artist name to edit it inline. Press Enter or click away to save.
 
-### 6. Export stems
+### 7. Export stems
 
 Click **↓ Export stems** on any ready track (in the library or the playback screen) to copy the separated WAV files to a folder of your choice. The exported folder contains:
 
@@ -158,6 +163,12 @@ Each pipeline stage (download → stems → analysis) updates the database and e
 
 Track data is stored in:
 - `~/Library/Application Support/com.wavesplit.app/` (macOS)
+
+Logs are written to:
+- `~/Library/Logs/com.wavesplit.app/wavesplit.log` (macOS) — JSON format, daily rotation
+- stderr — human-readable, visible during `just dev`
+
+Set `RUST_LOG` to control verbosity (defaults to `info`). Example: `RUST_LOG=debug just dev`
 
 ---
 
