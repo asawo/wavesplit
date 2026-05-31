@@ -108,6 +108,10 @@
     screen = "library";
     // keep selectedTrack alive so playhead position is preserved on return
   }
+
+  async function handleExportDone() {
+    await refreshTracks?.();
+  }
 </script>
 
 <div class="app fade-in">
@@ -140,6 +144,7 @@
           track={selectedTrack}
           active={screen === "playback"}
           onBack={closePlayback}
+          onExportDone={handleExportDone}
         />
       {/if}
     </div>
@@ -198,6 +203,43 @@
 
   :global(.fade-in) {
     animation: fade-in 0.15s ease-out both;
+  }
+
+  :global(.open-btn) {
+    padding: 4px 10px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: transparent;
+    color: var(--fg);
+    font-size: 12px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  :global(.open-btn:hover) {
+    border-color: var(--fg-muted);
+    background: var(--bg-button-hover);
+  }
+
+  :global(.export-btn) {
+    padding: 4px 12px;
+    border: 1px solid var(--accent);
+    border-radius: 4px;
+    background: transparent;
+    color: var(--accent);
+    font-size: 12px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  :global(.export-btn:hover:not(:disabled)) {
+    background: var(--accent);
+    color: #fff;
+  }
+
+  :global(.export-btn:disabled) {
+    opacity: 0.5;
+    cursor: default;
   }
 
   :global(body) {

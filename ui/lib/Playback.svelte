@@ -10,7 +10,7 @@
     waveformGradientId,
   } from "./playback.helpers.js";
 
-  let { track, active, onBack } = $props();
+  let { track, active, onBack, onExportDone } = $props();
 
   const STEMS = [
     { key: "vocals", label: "Vocals", color: "#4caf72" },
@@ -391,10 +391,20 @@
     exportError = "";
     try {
       await invoke("export_stems", { trackId: track.id, destDir: dest });
+      track.export_path = dest;
+      await onExportDone?.();
     } catch (e) {
       exportError = String(e);
     } finally {
       exportingId = null;
+    }
+  }
+
+  async function openFolder(path) {
+    try {
+      await invoke("open_folder", { path });
+    } catch (e) {
+      exportError = String(e);
     }
   }
 </script>
@@ -633,6 +643,16 @@
         <button class="dismiss-btn" onclick={() => (exportError = "")}>×</button
         >
       </span>
+    {/if}
+    {#if track.export_path}
+      <button
+        class="open-btn"
+        onclick={() => openFolder(track.export_path)}
+        title={track.export_path}
+        disabled={!!exportingId}
+      >
+        Open folder
+      </button>
     {/if}
     <button class="export-btn" onclick={exportStems} disabled={!!exportingId}>
       {exportingId ? "Exporting…" : "↓ Export stems"}
@@ -998,25 +1018,5 @@
     cursor: pointer;
     font-size: 13px;
     padding: 0 0 0 4px;
-  }
-
-  .export-btn {
-    padding: 7px 18px;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    background: transparent;
-    color: var(--fg);
-    font-size: 13px;
-    cursor: pointer;
-  }
-
-  .export-btn:hover:not(:disabled) {
-    background: var(--bg-button-hover);
-    border-color: var(--fg-muted);
-  }
-
-  .export-btn:disabled {
-    opacity: 0.45;
-    cursor: default;
   }
 </style>
