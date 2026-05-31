@@ -175,7 +175,7 @@
     try {
       await invoke("open_folder", { path });
     } catch (e) {
-      deleteError = String(e);
+      exportError = String(e);
     }
   }
 
@@ -353,6 +353,7 @@
                     openFolder(track.export_path);
                   }}
                   title={track.export_path}
+                  disabled={exportingId === track.id || deletingId === track.id}
                 >
                   Open folder
                 </button>
@@ -587,43 +588,6 @@
     align-items: center;
     gap: 6px;
     flex-shrink: 0;
-  }
-
-  .export-btn {
-    padding: 4px 12px;
-    border: 1px solid var(--accent);
-    border-radius: 4px;
-    background: transparent;
-    color: var(--accent);
-    font-size: 12px;
-    cursor: pointer;
-    white-space: nowrap;
-  }
-
-  .export-btn:hover:not(:disabled) {
-    background: var(--accent);
-    color: #fff;
-  }
-
-  .export-btn:disabled {
-    opacity: 0.5;
-    cursor: default;
-  }
-
-  .open-btn {
-    padding: 4px 10px;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    background: transparent;
-    color: var(--fg);
-    font-size: 12px;
-    cursor: pointer;
-    white-space: nowrap;
-  }
-
-  .open-btn:hover {
-    border-color: var(--fg-muted);
-    background: var(--bg-button-hover);
   }
 
   .retry-btn {
