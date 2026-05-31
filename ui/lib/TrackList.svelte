@@ -382,6 +382,7 @@
                 e.stopPropagation();
                 deleteTrack(track);
               }}
+              disabled={exportingId === track.id || retryingId === track.id}
               title="Delete track">✕</button
             >
           {/if}
