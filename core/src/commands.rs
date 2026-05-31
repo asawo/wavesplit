@@ -245,7 +245,22 @@ pub fn export_stems(
     dest_dir: String,
     state: tauri::State<'_, AppState>,
 ) -> Result<Vec<String>, String> {
+    {
+        let conn = state
+            .db
+            .lock()
+            .map_err(|_| "database unavailable".to_string())?;
+        if db::get_track(&conn, &track_id)
+            .map_err(|e| e.to_string())?
+            .is_none()
+        {
+            return Err("track not found — it may have been deleted".into());
+        }
+    }
     let stems_dir = paths::stems_dir(&state.data_dir, &track_id);
+    if !stems_dir.exists() {
+        return Err("track data no longer available — it may have been deleted".into());
+    }
     let dest = std::path::PathBuf::from(&dest_dir);
 
     let mut exported = Vec::new();
