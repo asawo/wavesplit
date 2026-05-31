@@ -127,6 +127,7 @@
   }
 
   let deleteError = $state("");
+  let deletingId = $state(null);
 
   let retryingId = $state(null);
   let retryError = $state("");
@@ -155,6 +156,7 @@
       },
     );
     if (!ok) return;
+    deletingId = track.id;
     deleteError = "";
     try {
       await invoke("delete_track", { id: track.id });
@@ -164,6 +166,8 @@
       );
     } catch (e) {
       deleteError = String(e);
+    } finally {
+      deletingId = null;
     }
   }
 
@@ -359,7 +363,7 @@
                   e.stopPropagation();
                   exportStems(track);
                 }}
-                disabled={exportingId === track.id}
+                disabled={exportingId === track.id || deletingId === track.id}
               >
                 {exportingId === track.id ? "Exporting…" : "↓ Export stems"}
               </button>
@@ -382,7 +386,9 @@
                 e.stopPropagation();
                 deleteTrack(track);
               }}
-              disabled={exportingId === track.id || retryingId === track.id}
+              disabled={exportingId === track.id ||
+                deletingId === track.id ||
+                retryingId === track.id}
               title="Delete track">✕</button
             >
           {/if}

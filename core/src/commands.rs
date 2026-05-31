@@ -245,7 +245,6 @@ pub fn export_stems(
     dest_dir: String,
     state: tauri::State<'_, AppState>,
 ) -> Result<Vec<String>, String> {
-    // Verify the track still exists before touching the filesystem.
     {
         let conn = state
             .db
