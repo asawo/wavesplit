@@ -44,13 +44,16 @@ describe("TrackList keyboard play", () => {
   it("Enter in a title edit input does not trigger onPlay", async () => {
     const { container } = render(TrackList, { tracks: [readyTrack], onPlay });
 
+    // Open edit mode by clicking the title span (flushSync forces Svelte's DOM update)
     const titleEl = container.querySelector(".title")!;
     fireEvent.click(titleEl);
     flushSync();
 
+    // The title input should now be visible
     const input = container.querySelector(".title-input");
     expect(input).not.toBeNull();
 
+    // Press Enter — should commit the edit, not play the track
     await fireEvent.keyDown(input!, { key: "Enter" });
 
     expect(onPlay).not.toHaveBeenCalled();

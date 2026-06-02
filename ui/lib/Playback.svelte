@@ -71,8 +71,8 @@
   let loading = $state(false);
   let loadError: string | null = $state(null);
   let duration = $state(0);
-  let startOffset: number = 0;
-  let startTime: number = 0;
+  let startOffset: number = 0; // track pos (s) where last play() started from
+  let startTime: number = 0; // audioCtx.currentTime when last play() started
   let rafId: number | null = null;
   let loadedTrackId: string | null = null;
 
@@ -101,6 +101,8 @@
 
   function applyGains(): void {
     for (const stem of STEMS) {
+      // Read reactive state first so $effect always tracks these as dependencies,
+      // even before gain nodes are created (early-return would skip the reads).
       const s = stemState[stem.key];
       const muted = anySoloed ? !s.soloed : s.muted;
       const target = muted ? 0 : s.volume;
@@ -159,6 +161,7 @@
         }),
       );
 
+      // Discard results if the user switched tracks while we were loading
       if (loadedTrackId !== targetId) return;
 
       const newBuffers = Object.fromEntries(results);

@@ -11,7 +11,7 @@
 
   let tracks: Track[] = $state([]);
   let refreshTracks: (() => Promise<void>) | null = $state(null);
-  let ready = $state(true);
+  let ready = $state(true); // optimistic: assume available, overlay shows if not
 
   let screen: "library" | "playback" = $state("library");
   let selectedTrack: Track | null = $state(null);

@@ -13,6 +13,7 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({
   open: vi.fn(),
 }));
 
+// Minimal AudioBuffer that satisfies extractWaveform (needs getChannelData)
 function mockBuffer() {
   return {
     duration: 10,
@@ -20,6 +21,7 @@ function mockBuffer() {
   };
 }
 
+// Fresh AudioContext mock per test so spies don't bleed between tests
 function makeAudioCtx() {
   return {
     createGain: vi.fn().mockReturnValue({
@@ -98,6 +100,7 @@ afterEach(() => {
   cleanup();
 });
 
+// Wait until the play button is enabled (audio has finished loading)
 async function waitForAudio(container: HTMLElement) {
   await waitFor(() => {
     const btn = container.querySelector(
@@ -226,6 +229,7 @@ describe("Waveform gradient rendering", () => {
     await fireEvent.click(container.querySelector(".play-btn")!);
     expect(capturedTick).toBeDefined();
 
+    // Advance audio time to half the 10s track (duration comes from mockBuffer.duration = 10)
     audioCtx.currentTime = 5;
     capturedTick!(0);
 
@@ -245,6 +249,7 @@ describe("Waveform gradient rendering", () => {
       onBack: vi.fn(),
     });
 
+    // Mute the vocals stem (first mute button)
     await fireEvent.click(container.querySelectorAll('[title="Mute"]')[0]);
 
     await waitFor(() => {
@@ -268,11 +273,14 @@ describe("Playback resource management", () => {
 
     await waitForAudio(container);
 
+    // Start playback — schedTick() → requestAnimationFrame, setting rafId
     await fireEvent.click(container.querySelector(".play-btn")!);
     expect(requestAnimationFrame).toHaveBeenCalled();
 
+    // Reset spy so we only capture cancellations from the track switch
     cancelAnimationFrameSpy.mockClear();
 
+    // Switch to a different track — loadAudio() should call cancelTick()
     await rerender({ track: makeTrack("b"), active: true, onBack: vi.fn() });
 
     await waitFor(() => expect(cancelAnimationFrameSpy).toHaveBeenCalled());
@@ -285,6 +293,7 @@ describe("Playback resource management", () => {
       onBack: vi.fn(),
     });
 
+    // Wait for audio to load so AudioContext is created
     await waitForAudio(container);
 
     unmount();

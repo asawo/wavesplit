@@ -39,6 +39,7 @@ export function extractWaveform(
   return result.map((v) => v / max);
 }
 
+// Pure version of the component's toggleSolo — takes/returns a plain stemState object.
 export function applyToggleSolo(
   stemState: StemStateMap,
   key: StemKey,
@@ -49,6 +50,7 @@ export function applyToggleSolo(
   };
 }
 
+// Pure version of the component's isMuted(key).
 export function computeMuted(stemState: StemStateMap, key: StemKey): boolean {
   const anySoloed = Object.values(stemState).some((s) => s.soloed);
   return anySoloed ? !stemState[key].soloed : stemState[key].muted;
