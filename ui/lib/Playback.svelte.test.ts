@@ -2,17 +2,17 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, fireEvent, waitFor, cleanup } from "@testing-library/svelte";
 import Playback from "./Playback.svelte";
 import { invoke } from "@tauri-apps/api/core";
+import type { Track } from "./types";
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
-  convertFileSrc: vi.fn((path) => `asset://${path}`),
+  convertFileSrc: vi.fn((path: string) => `asset://${path}`),
 }));
 
 vi.mock("@tauri-apps/plugin-dialog", () => ({
   open: vi.fn(),
 }));
 
-// Minimal AudioBuffer that satisfies extractWaveform (needs getChannelData)
 function mockBuffer() {
   return {
     duration: 10,
@@ -20,7 +20,6 @@ function mockBuffer() {
   };
 }
 
-// Fresh AudioContext mock per test so spies don't bleed between tests
 function makeAudioCtx() {
   return {
     createGain: vi.fn().mockReturnValue({
@@ -44,21 +43,27 @@ function makeAudioCtx() {
   };
 }
 
-function makeTrack(id) {
+function makeTrack(id: string): Track {
   return {
     id,
     title: `Track ${id}`,
     artist: null,
+    sort_order: 1,
     status_download: "done",
     status_stems: "done",
     status_analysis: "done",
     error_message: null,
     duration_ms: 10000,
+    export_path: null,
+    source_type: "local",
+    source_url: null,
+    source_path: null,
+    created_at: "",
   };
 }
 
-let audioCtx;
-let cancelAnimationFrameSpy;
+let audioCtx: ReturnType<typeof makeAudioCtx>;
+let cancelAnimationFrameSpy: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
   audioCtx = makeAudioCtx();
@@ -80,7 +85,7 @@ beforeEach(() => {
     }),
   );
 
-  invoke.mockResolvedValue({
+  vi.mocked(invoke).mockResolvedValue({
     bass: "/stems/bass.wav",
     drums: "/stems/drums.wav",
     vocals: "/stems/vocals.wav",
@@ -93,10 +98,11 @@ afterEach(() => {
   cleanup();
 });
 
-// Wait until the play button is enabled (audio has finished loading)
-async function waitForAudio(container) {
+async function waitForAudio(container: HTMLElement) {
   await waitFor(() => {
-    const btn = container.querySelector(".play-btn");
+    const btn = container.querySelector(
+      ".play-btn",
+    ) as HTMLButtonElement | null;
     if (!btn || btn.disabled) throw new Error("audio not loaded yet");
   });
 }
@@ -118,7 +124,7 @@ describe("Waveform gradient rendering", () => {
       active: true,
       onBack: vi.fn(),
     });
-    expect(container.querySelector("svg.waveform linearGradient").id).toBe(
+    expect(container.querySelector("svg.waveform linearGradient")!.id).toBe(
       "wf-t1-master",
     );
   });
@@ -204,7 +210,7 @@ describe("Waveform gradient rendering", () => {
   });
 
   it("updates gradient stop offsets when playhead advances", async () => {
-    let capturedTick;
+    let capturedTick: FrameRequestCallback | undefined;
     vi.mocked(requestAnimationFrame).mockImplementationOnce((cb) => {
       capturedTick = cb;
       return 1;
@@ -217,12 +223,11 @@ describe("Waveform gradient rendering", () => {
     });
     await waitForAudio(container);
 
-    await fireEvent.click(container.querySelector(".play-btn"));
+    await fireEvent.click(container.querySelector(".play-btn")!);
     expect(capturedTick).toBeDefined();
 
-    // Advance audio time to half the 10s track (duration comes from mockBuffer.duration = 10)
     audioCtx.currentTime = 5;
-    capturedTick();
+    capturedTick!(0);
 
     await waitFor(() => {
       const stops = container.querySelectorAll(
@@ -240,13 +245,12 @@ describe("Waveform gradient rendering", () => {
       onBack: vi.fn(),
     });
 
-    // Mute the vocals stem (first mute button)
     await fireEvent.click(container.querySelectorAll('[title="Mute"]')[0]);
 
     await waitFor(() => {
       const gradient = container.querySelector(
         'linearGradient[id="wf-t1-vocals"]',
-      );
+      )!;
       const stops = gradient.querySelectorAll("stop");
       expect(stops[0].getAttribute("stop-color")).toBe("#2e2e2e");
       expect(stops[1].getAttribute("stop-color")).toBe("#2e2e2e");
@@ -264,14 +268,11 @@ describe("Playback resource management", () => {
 
     await waitForAudio(container);
 
-    // Start playback — schedTick() → requestAnimationFrame, setting rafId
-    await fireEvent.click(container.querySelector(".play-btn"));
+    await fireEvent.click(container.querySelector(".play-btn")!);
     expect(requestAnimationFrame).toHaveBeenCalled();
 
-    // Reset spy so we only capture cancellations from the track switch
     cancelAnimationFrameSpy.mockClear();
 
-    // Switch to a different track — loadAudio() should call cancelTick()
     await rerender({ track: makeTrack("b"), active: true, onBack: vi.fn() });
 
     await waitFor(() => expect(cancelAnimationFrameSpy).toHaveBeenCalled());
@@ -284,7 +285,6 @@ describe("Playback resource management", () => {
       onBack: vi.fn(),
     });
 
-    // Wait for audio to load so AudioContext is created
     await waitForAudio(container);
 
     unmount();

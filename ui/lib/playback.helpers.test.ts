@@ -7,9 +7,8 @@ import {
   applyToggleSolo,
   computeMuted,
   waveformGradientId,
-} from "./playback.helpers.js";
-
-// ── formatTime ──────────────────────────────────────────────
+} from "./playback.helpers";
+import type { StemKey, StemStateMap } from "./types";
 
 describe("formatTime", () => {
   it("formats zero as 0:00", () => expect(formatTime(0)).toBe("0:00"));
@@ -28,8 +27,6 @@ describe("formatTime", () => {
     expect(formatTime(65)).toBe("1:05"));
 });
 
-// ── hashStr ─────────────────────────────────────────────────
-
 describe("hashStr", () => {
   it("is deterministic", () => expect(hashStr("hello")).toBe(hashStr("hello")));
   it("produces different values for different inputs", () => {
@@ -43,8 +40,6 @@ describe("hashStr", () => {
     expect(Number.isInteger(h)).toBe(true);
   });
 });
-
-// ── makeWaveformBars ─────────────────────────────────────────
 
 describe("makeWaveformBars", () => {
   it("returns an array of the requested length", () => {
@@ -70,10 +65,10 @@ describe("makeWaveformBars", () => {
   it("handles count=1", () => expect(makeWaveformBars("x", 1)).toHaveLength(1));
 });
 
-// ── extractWaveform ──────────────────────────────────────────
-
-function mockAudioBuffer(samples) {
-  return { getChannelData: () => Float32Array.from(samples) };
+function mockAudioBuffer(samples: number[]): AudioBuffer {
+  return {
+    getChannelData: () => Float32Array.from(samples),
+  } as unknown as AudioBuffer;
 }
 
 describe("extractWaveform", () => {
@@ -111,15 +106,16 @@ describe("extractWaveform", () => {
   });
 });
 
-// ── applyToggleSolo / computeMuted ───────────────────────────
-
-function makeStemState(solos = {}, mutes = {}) {
+function makeStemState(
+  solos: Partial<Record<StemKey, boolean>> = {},
+  mutes: Partial<Record<StemKey, boolean>> = {},
+): StemStateMap {
   return Object.fromEntries(
-    ["vocals", "drums", "bass", "other"].map((k) => [
+    (["vocals", "drums", "bass", "other"] as StemKey[]).map((k) => [
       k,
       { muted: mutes[k] ?? false, soloed: solos[k] ?? false, volume: 1 },
     ]),
-  );
+  ) as StemStateMap;
 }
 
 describe("applyToggleSolo", () => {
@@ -148,7 +144,7 @@ describe("applyToggleSolo", () => {
     s = applyToggleSolo(s, "drums");
     s = applyToggleSolo(s, "bass");
     s = applyToggleSolo(s, "other");
-    for (const k of ["vocals", "drums", "bass", "other"]) {
+    for (const k of ["vocals", "drums", "bass", "other"] as StemKey[]) {
       expect(s[k].soloed).toBe(true);
     }
   });
@@ -216,13 +212,11 @@ describe("computeMuted", () => {
       bass: true,
       other: true,
     });
-    for (const k of ["vocals", "drums", "bass", "other"]) {
+    for (const k of ["vocals", "drums", "bass", "other"] as StemKey[]) {
       expect(computeMuted(s, k)).toBe(false);
     }
   });
 });
-
-// ── waveformGradientId ──────────────────────────────────────
 
 describe("waveformGradientId", () => {
   it("formats as 'wf-{trackId}-{stemKey}'", () => {

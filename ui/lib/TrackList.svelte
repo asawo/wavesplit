@@ -1,5 +1,4 @@
-<script>
-  import { invoke } from "@tauri-apps/api/core";
+<script lang="ts">
   import { listen } from "@tauri-apps/api/event";
   import { open as openDialog, confirm } from "@tauri-apps/plugin-dialog";
 
@@ -11,18 +10,36 @@
     hasError,
     statusLabel,
     progressPct,
-  } from "./tracklist.helpers.js";
+  } from "./tracklist.helpers";
+  import {
+    listTracks,
+    exportStems as exportStemsCmd,
+    updateTrackMeta,
+    openFolder as openFolderCmd,
+    deleteTrack as deleteTrackCmd,
+    retryTrack as retryTrackCmd,
+  } from "./commands";
+  import type { Track, PipelineEvent, ProgressMap } from "./types";
 
-  let { tracks = $bindable([]), refresh = $bindable(null), onPlay } = $props();
+  interface Props {
+    tracks?: Track[];
+    refresh?: (() => Promise<void>) | null;
+    onPlay: (track: Track) => void;
+  }
 
-  // pipeline events keyed by track id: { stage, status, message }
-  let progress = $state({});
+  let {
+    tracks = $bindable([]),
+    refresh = $bindable(null),
+    onPlay,
+  }: Props = $props();
+
+  let progress: ProgressMap = $state({});
 
   let filterQuery = $state("");
   let sortKey = $state("newest");
-  let filterInput = $state(null);
+  let filterInput: HTMLInputElement | null = $state(null);
 
-  function matchesFilter(track) {
+  function matchesFilter(track: Track): boolean {
     if (!filterQuery) return true;
     return (
       fuzzy(filterQuery, track.title) || fuzzy(filterQuery, track.artist ?? "")
@@ -33,11 +50,11 @@
     tracks.filter(matchesFilter).sort(SORT_FNS[sortKey]),
   );
 
-  let unlisten;
+  let unlisten: (() => void) | undefined;
 
   onMount(async () => {
     refresh = refreshTracks;
-    unlisten = await listen("pipeline", (event) => {
+    unlisten = await listen<PipelineEvent>("pipeline", (event) => {
       const { track_id, stage, status, message } = event.payload;
       progress = {
         ...progress,
@@ -56,21 +73,20 @@
   const PENDING_ID = "__pending__";
 
   async function refreshTracks() {
-    tracks = await invoke("list_tracks");
+    tracks = await listTracks();
   }
 
-  // Inline editing: editingId = track id currently being edited
-  let editingId = $state(null);
+  let editingId: string | null = $state(null);
   let editTitle = $state("");
   let editArtist = $state("");
 
-  function startEdit(track) {
+  function startEdit(track: Track): void {
     editingId = track.id;
     editTitle = track.title;
     editArtist = track.artist ?? "";
   }
 
-  async function commitEdit(track) {
+  async function commitEdit(track: Track): Promise<void> {
     if (editingId !== track.id) return;
     editingId = null;
     const trimmedTitle = editTitle.trim() || track.title;
@@ -82,11 +98,7 @@
       return;
     editError = "";
     try {
-      await invoke("update_track_meta", {
-        id: track.id,
-        title: trimmedTitle,
-        artist: trimmedArtist,
-      });
+      await updateTrackMeta(track.id, trimmedTitle, trimmedArtist);
       await refreshTracks();
     } catch (e) {
       editError = String(e);
@@ -94,9 +106,9 @@
     }
   }
 
-  function onEditKeydown(e, track) {
+  function onEditKeydown(e: KeyboardEvent, track: Track): void {
     if (e.key === "Enter") {
-      e.target.blur();
+      (e.target as HTMLInputElement).blur();
     }
     if (e.key === "Escape") {
       editingId = null;
@@ -105,10 +117,10 @@
 
   let editError = $state("");
 
-  let exportingId = $state(null);
+  let exportingId: string | null = $state(null);
   let exportError = $state("");
 
-  async function exportStems(track) {
+  async function exportStems(track: Track): Promise<void> {
     const dest = await openDialog({
       directory: true,
       title: "Export stems to…",
@@ -117,7 +129,7 @@
     exportingId = track.id;
     exportError = "";
     try {
-      await invoke("export_stems", { trackId: track.id, destDir: dest });
+      await exportStemsCmd(track.id, dest);
       await refreshTracks();
     } catch (e) {
       exportError = String(e);
@@ -127,16 +139,16 @@
   }
 
   let deleteError = $state("");
-  let deletingId = $state(null);
+  let deletingId: string | null = $state(null);
 
-  let retryingId = $state(null);
+  let retryingId: string | null = $state(null);
   let retryError = $state("");
 
-  async function retryTrack(track) {
+  async function retryTrack(track: Track): Promise<void> {
     retryingId = track.id;
     retryError = "";
     try {
-      await invoke("retry_track", { id: track.id });
+      await retryTrackCmd(track.id);
       await refreshTracks();
     } catch (e) {
       retryError = String(e);
@@ -145,7 +157,7 @@
     }
   }
 
-  async function deleteTrack(track) {
+  async function deleteTrack(track: Track): Promise<void> {
     const ok = await confirm(
       `"${track.title}" and all its stems will be permanently deleted.`,
       {
@@ -159,7 +171,7 @@
     deletingId = track.id;
     deleteError = "";
     try {
-      await invoke("delete_track", { id: track.id });
+      await deleteTrackCmd(track.id);
       tracks = tracks.filter((t) => t.id !== track.id);
       progress = Object.fromEntries(
         Object.entries(progress).filter(([k]) => k !== String(track.id)),
@@ -171,15 +183,15 @@
     }
   }
 
-  async function openFolder(path) {
+  async function openFolder(path: string): Promise<void> {
     try {
-      await invoke("open_folder", { path });
+      await openFolderCmd(path);
     } catch (e) {
       exportError = String(e);
     }
   }
 
-  function isProcessing(track) {
+  function isProcessing(track: Track): boolean {
     return !isReady(track) && !hasError(track, progress);
   }
 </script>
@@ -265,11 +277,11 @@
         class:ready={isReady(track)}
         class:error={hasError(track, progress)}
         class:pending={track.id === PENDING_ID}
-        class:playable={isReady(track) && !!onPlay}
-        role={isReady(track) && onPlay ? "button" : undefined}
-        tabindex={isReady(track) && onPlay ? 0 : undefined}
+        class:playable={isReady(track)}
+        role={isReady(track) ? "button" : undefined}
+        tabindex={isReady(track) ? 0 : undefined}
         onclick={() => {
-          if (onPlay && isReady(track) && editingId !== track.id) onPlay(track);
+          if (isReady(track) && editingId !== track.id) onPlay(track);
         }}
       >
         <div class="track-info">
@@ -350,9 +362,9 @@
                   class="open-btn"
                   onclick={(e) => {
                     e.stopPropagation();
-                    openFolder(track.export_path);
+                    openFolder(track.export_path!);
                   }}
-                  title={track.export_path}
+                  title={track.export_path!}
                   disabled={exportingId === track.id || deletingId === track.id}
                 >
                   Open folder

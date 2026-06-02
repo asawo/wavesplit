@@ -1,5 +1,4 @@
-<script>
-  import { invoke } from "@tauri-apps/api/core";
+<script lang="ts">
   import { listen } from "@tauri-apps/api/event";
   import { onMount, onDestroy } from "svelte";
   import AddTrack from "./lib/AddTrack.svelte";
@@ -7,47 +6,52 @@
   import Playback from "./lib/Playback.svelte";
   import Setup from "./lib/Setup.svelte";
   import PipelineToast from "./lib/PipelineToast.svelte";
+  import { checkDemucs, deleteTrack } from "./lib/commands";
+  import type { Track, PipelineEvent, ToastTrack } from "./lib/types";
 
-  let tracks = $state([]);
-  let refreshTracks = $state(null);
-  let ready = $state(true); // optimistic: assume available, overlay shows if not
+  let tracks: Track[] = $state([]);
+  let refreshTracks: (() => Promise<void>) | null = $state(null);
+  let ready = $state(true);
 
-  let screen = $state("library"); // 'library' | 'playback'
-  let selectedTrack = $state(null);
+  let screen: "library" | "playback" = $state("library");
+  let selectedTrack: Track | null = $state(null);
 
-  let toastTrack = $state(null);
-  let toastDismissTimer = null;
-  let unlistenPipeline;
+  let toastTrack: ToastTrack | null = $state(null);
+  let toastDismissTimer: ReturnType<typeof setTimeout> | null = null;
+  let unlistenPipeline: (() => void) | undefined;
 
   onDestroy(() => {
     unlistenPipeline?.();
-    clearTimeout(toastDismissTimer);
+    if (toastDismissTimer) clearTimeout(toastDismissTimer);
   });
 
   onMount(async () => {
     try {
-      ready = await invoke("check_demucs");
+      ready = await checkDemucs();
     } catch {
       ready = false;
     }
-    unlistenPipeline = await listen("pipeline", ({ payload }) => {
-      const { track_id, stage, status, message } = payload;
-      if (!toastTrack || toastTrack.id !== track_id) return;
-      toastTrack.stage = stage;
-      toastTrack.status = status;
-      toastTrack.message = message ?? "";
-      if (stage === "analysis" && status === "done") {
-        clearTimeout(toastDismissTimer);
-        toastDismissTimer = setTimeout(() => {
-          toastTrack = null;
-        }, 2000);
-      }
-    });
+    unlistenPipeline = await listen<PipelineEvent>(
+      "pipeline",
+      ({ payload }) => {
+        const { track_id, stage, status, message } = payload;
+        if (!toastTrack || toastTrack.id !== track_id) return;
+        toastTrack.stage = stage;
+        toastTrack.status = status;
+        toastTrack.message = message ?? "";
+        if (stage === "analysis" && status === "done") {
+          if (toastDismissTimer) clearTimeout(toastDismissTimer);
+          toastDismissTimer = setTimeout(() => {
+            toastTrack = null;
+          }, 2000);
+        }
+      },
+    );
   });
 
   const PENDING_ID = "__pending__";
 
-  function handleStarted(title) {
+  function handleStarted(title: string): void {
     tracks = [
       {
         id: PENDING_ID,
@@ -60,6 +64,10 @@
         error_message: null,
         export_path: null,
         duration_ms: null,
+        source_type: "local",
+        source_url: null,
+        source_path: null,
+        created_at: "",
       },
       ...tracks,
     ];
@@ -72,7 +80,7 @@
     };
   }
 
-  async function handleAdded(id) {
+  async function handleAdded(id: string | null): Promise<void> {
     await refreshTracks?.();
     if (toastTrack) {
       if (id) {
@@ -85,31 +93,31 @@
     }
   }
 
-  async function handleCancelToast() {
+  async function handleCancelToast(): Promise<void> {
     const id = toastTrack?.id;
     toastTrack = null;
     if (id) {
-      await invoke("delete_track", { id });
+      await deleteTrack(id);
       refreshTracks?.();
     }
   }
 
-  function dismissToast() {
-    clearTimeout(toastDismissTimer);
+  function dismissToast(): void {
+    if (toastDismissTimer) clearTimeout(toastDismissTimer);
     toastTrack = null;
   }
 
-  function openPlayback(track) {
+  function openPlayback(track: Track): void {
     selectedTrack = track;
     screen = "playback";
   }
 
-  function closePlayback() {
+  function closePlayback(): void {
     screen = "library";
     // keep selectedTrack alive so playhead position is preserved on return
   }
 
-  async function handleExportDone() {
+  async function handleExportDone(): Promise<void> {
     await refreshTracks?.();
   }
 </script>
