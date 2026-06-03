@@ -3,6 +3,7 @@
   import { onDestroy } from "svelte";
   import { downloadDemucs } from "./commands";
   import type { SetupProgress } from "./types";
+  import { EVENT_SETUP_PROGRESS } from "./constants";
 
   interface Props {
     onReady: () => void;
@@ -24,7 +25,7 @@
     error = null;
     progress = null;
 
-    unlisten = await listen<SetupProgress>("setup:progress", (e) => {
+    unlisten = await listen<SetupProgress>(EVENT_SETUP_PROGRESS, (e) => {
       progress = e.payload;
     });
 

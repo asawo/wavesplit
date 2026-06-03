@@ -15,6 +15,23 @@
     openFolder as openFolderCmd,
   } from "./commands";
   import type { Track, StemKey, StemStateMap } from "./types";
+  import {
+    MASTER_KEY,
+    LoopMarker,
+    WAVEFORM_BAR_COUNT,
+    WAVEFORM_VIEW_WIDTH,
+    MASTER_VIEW_HEIGHT,
+    STEM_VIEW_HEIGHT,
+    MASTER_BAR_HEIGHT,
+    STEM_BAR_HEIGHT,
+    BAR_WIDTH,
+    WAVEFORM_COLOR_PLAYED,
+    WAVEFORM_COLOR_UNPLAYED,
+    WAVEFORM_COLOR_MUTED,
+    GAIN_SMOOTHING_SEC,
+    SKIP_SECONDS,
+    DEFAULT_LOOP_SECONDS,
+  } from "./constants";
 
   interface Props {
     track: Track;
@@ -38,7 +55,7 @@
   let loopActive = $state(false);
   let loopStart = $state(0);
   let loopEnd = $state(1);
-  let draggingMarker: "start" | "end" | null = null;
+  let draggingMarker: LoopMarker | null = null;
   let loopStartPct = $derived(loopStart * 100);
   let loopEndPct = $derived(loopEnd * 100);
   const MIN_LOOP_FRACTION = 0.02;
@@ -82,7 +99,7 @@
   );
   let elapsedSeconds = $derived(playhead * displayDuration);
 
-  const masterGradId = $derived(waveformGradientId(track.id, "master"));
+  const masterGradId = $derived(waveformGradientId(track.id, MASTER_KEY));
 
   // Master waveform = RMS average of all loaded stems
   let masterWaveform = $derived(
@@ -91,9 +108,10 @@
         (w): w is number[] => !!w,
       );
       if (!loaded.length) return null;
-      const avg = new Array(120).fill(0);
+      const avg = new Array(WAVEFORM_BAR_COUNT).fill(0);
       for (const w of loaded) {
-        for (let i = 0; i < 120; i++) avg[i] += w[i] / loaded.length;
+        for (let i = 0; i < WAVEFORM_BAR_COUNT; i++)
+          avg[i] += w[i] / loaded.length;
       }
       return avg;
     })(),
@@ -109,7 +127,11 @@
       const node = gainNodes[stem.key];
       if (!node) continue;
       if (audioCtx) {
-        node.gain.setTargetAtTime(target, audioCtx.currentTime, 0.015);
+        node.gain.setTargetAtTime(
+          target,
+          audioCtx.currentTime,
+          GAIN_SMOOTHING_SEC,
+        );
       } else {
         node.gain.value = target;
       }
@@ -167,7 +189,10 @@
       const newBuffers = Object.fromEntries(results);
       buffers = newBuffers;
       waveformData = Object.fromEntries(
-        results.map(([key, buf]) => [key, extractWaveform(buf, 120)]),
+        results.map(([key, buf]) => [
+          key,
+          extractWaveform(buf, WAVEFORM_BAR_COUNT),
+        ]),
       );
       duration = Object.values(newBuffers)[0]?.duration ?? 0;
     } catch (e) {
@@ -281,14 +306,14 @@
     if (loopActive) {
       const dur = Math.max(duration, 0.001);
       loopStart = playhead;
-      loopEnd = Math.min(1, playhead + 10 / dur);
+      loopEnd = Math.min(1, playhead + DEFAULT_LOOP_SECONDS / dur);
     }
   }
 
   // ── Loop marker drag ────────────────────────────────────────
 
-  function applyMarkerDrag(which: "start" | "end", frac: number): void {
-    if (which === "start") {
+  function applyMarkerDrag(which: LoopMarker, frac: number): void {
+    if (which === LoopMarker.Start) {
       loopStart = Math.max(0, Math.min(frac, loopEnd - MIN_LOOP_FRACTION));
       if (playhead < loopStart) seek(loopStart);
     } else {
@@ -299,7 +324,7 @@
 
   let cleanupDrag: (() => void) | null = null;
 
-  function onMarkerPointerDown(e: PointerEvent, which: "start" | "end"): void {
+  function onMarkerPointerDown(e: PointerEvent, which: LoopMarker): void {
     e.preventDefault();
     e.stopPropagation();
     draggingMarker = which;
@@ -428,10 +453,10 @@
       handlePlayPause();
     } else if (e.key === "ArrowLeft") {
       e.preventDefault();
-      skipBy(-10);
+      skipBy(-SKIP_SECONDS);
     } else if (e.key === "ArrowRight") {
       e.preventDefault();
-      skipBy(10);
+      skipBy(SKIP_SECONDS);
     } else if (e.key === "l" || e.key === "L") {
       e.preventDefault();
       toggleLoop();
@@ -461,27 +486,37 @@
         onclick={seekToClick}
         style="opacity:{loading ? 0.4 : 1}; transition:opacity 0.3s"
       >
-        <svg class="waveform" viewBox="0 0 400 60" preserveAspectRatio="none">
+        <svg
+          class="waveform"
+          viewBox="0 0 {WAVEFORM_VIEW_WIDTH} {MASTER_VIEW_HEIGHT}"
+          preserveAspectRatio="none"
+        >
           <defs>
             <linearGradient
               id={masterGradId}
               gradientUnits="userSpaceOnUse"
               x1="0"
-              x2="400"
+              x2={WAVEFORM_VIEW_WIDTH}
               y1="0"
               y2="0"
             >
-              <stop offset="{playhead * 100}%" stop-color="#4caf72" />
-              <stop offset="{playhead * 100}%" stop-color="#383838" />
+              <stop
+                offset="{playhead * 100}%"
+                stop-color={WAVEFORM_COLOR_PLAYED}
+              />
+              <stop
+                offset="{playhead * 100}%"
+                stop-color={WAVEFORM_COLOR_UNPLAYED}
+              />
             </linearGradient>
           </defs>
-          {#each masterWaveform ?? makeWaveformBars(track.id, 120) as h, i}
-            {@const x = i * (400 / 120)}
-            {@const bh = h * 54}
+          {#each masterWaveform ?? makeWaveformBars(track.id, WAVEFORM_BAR_COUNT) as h, i}
+            {@const x = i * (WAVEFORM_VIEW_WIDTH / WAVEFORM_BAR_COUNT)}
+            {@const bh = h * MASTER_BAR_HEIGHT}
             <rect
               {x}
-              y={(60 - bh) / 2}
-              width="2.2"
+              y={(MASTER_VIEW_HEIGHT - bh) / 2}
+              width={BAR_WIDTH}
               height={bh}
               rx="1"
               fill="url(#{masterGradId})"
@@ -497,13 +532,13 @@
           <div
             class="loop-marker"
             style="left:{loopStartPct}%"
-            onpointerdown={(e) => onMarkerPointerDown(e, "start")}
+            onpointerdown={(e) => onMarkerPointerDown(e, LoopMarker.Start)}
           ></div>
           <!-- svelte-ignore a11y_no_static_element_interactions -->
           <div
             class="loop-marker"
             style="left:{loopEndPct}%"
-            onpointerdown={(e) => onMarkerPointerDown(e, "end")}
+            onpointerdown={(e) => onMarkerPointerDown(e, LoopMarker.End)}
           ></div>
         {/if}
         <div class="playhead" style="left:{playhead * 100}%">
@@ -522,8 +557,10 @@
     <button class="transport-btn" title="Skip to start" onclick={() => seek(0)}
       >‹</button
     >
-    <button class="transport-btn" title="Rewind 10s" onclick={() => skipBy(-10)}
-      >‹‹</button
+    <button
+      class="transport-btn"
+      title="Rewind 10s"
+      onclick={() => skipBy(-SKIP_SECONDS)}>‹‹</button
     >
     <button
       class="transport-btn play-btn"
@@ -533,8 +570,10 @@
     >
       {playing ? "⏸" : "▶"}
     </button>
-    <button class="transport-btn" title="Forward 10s" onclick={() => skipBy(10)}
-      >››</button
+    <button
+      class="transport-btn"
+      title="Forward 10s"
+      onclick={() => skipBy(SKIP_SECONDS)}>››</button
     >
     <button class="transport-btn" title="Skip to end" onclick={() => seek(1)}
       >›</button
@@ -577,7 +616,7 @@
         >
           <svg
             class="stem-waveform"
-            viewBox="0 0 400 28"
+            viewBox="0 0 {WAVEFORM_VIEW_WIDTH} {STEM_VIEW_HEIGHT}"
             preserveAspectRatio="none"
           >
             <defs>
@@ -585,27 +624,29 @@
                 id={stemGradId}
                 gradientUnits="userSpaceOnUse"
                 x1="0"
-                x2="400"
+                x2={WAVEFORM_VIEW_WIDTH}
                 y1="0"
                 y2="0"
               >
                 <stop
                   offset="{playhead * 100}%"
-                  stop-color={muted ? "#2e2e2e" : stem.color}
+                  stop-color={muted ? WAVEFORM_COLOR_MUTED : stem.color}
                 />
                 <stop
                   offset="{playhead * 100}%"
-                  stop-color={muted ? "#2e2e2e" : "#383838"}
+                  stop-color={muted
+                    ? WAVEFORM_COLOR_MUTED
+                    : WAVEFORM_COLOR_UNPLAYED}
                 />
               </linearGradient>
             </defs>
-            {#each waveformData[stem.key] ?? makeWaveformBars(track.id + stem.key, 120) as h, i}
-              {@const x = i * (400 / 120)}
-              {@const bh = h * 24}
+            {#each waveformData[stem.key] ?? makeWaveformBars(track.id + stem.key, WAVEFORM_BAR_COUNT) as h, i}
+              {@const x = i * (WAVEFORM_VIEW_WIDTH / WAVEFORM_BAR_COUNT)}
+              {@const bh = h * STEM_BAR_HEIGHT}
               <rect
                 {x}
-                y={(28 - bh) / 2}
-                width="2.2"
+                y={(STEM_VIEW_HEIGHT - bh) / 2}
+                width={BAR_WIDTH}
                 height={bh}
                 rx="0.5"
                 fill="url(#{stemGradId})"

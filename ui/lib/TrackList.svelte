@@ -20,6 +20,7 @@
     retryTrack as retryTrackCmd,
   } from "./commands";
   import type { Track, PipelineEvent, ProgressMap } from "./types";
+  import { PENDING_ID, EVENT_PIPELINE, SortKey } from "./constants";
 
   interface Props {
     tracks?: Track[];
@@ -36,7 +37,7 @@
   let progress: ProgressMap = $state({});
 
   let filterQuery = $state("");
-  let sortKey = $state("newest");
+  let sortKey: SortKey = $state(SortKey.Newest);
   let filterInput: HTMLInputElement | null = $state(null);
 
   function matchesFilter(track: Track): boolean {
@@ -54,7 +55,7 @@
 
   onMount(async () => {
     refresh = refreshTracks;
-    unlisten = await listen<PipelineEvent>("pipeline", (event) => {
+    unlisten = await listen<PipelineEvent>(EVENT_PIPELINE, (event) => {
       const { track_id, stage, status, message } = event.payload;
       progress = {
         ...progress,
@@ -69,8 +70,6 @@
   });
 
   onDestroy(() => unlisten?.());
-
-  const PENDING_ID = "__pending__";
 
   async function refreshTracks() {
     tracks = await listTracks();
@@ -220,10 +219,10 @@
         bind:this={filterInput}
       />
       <select class="sort-select" bind:value={sortKey}>
-        <option value="newest">Newest</option>
-        <option value="oldest">Oldest</option>
-        <option value="title">Title</option>
-        <option value="artist">Artist</option>
+        <option value={SortKey.Newest}>Newest</option>
+        <option value={SortKey.Oldest}>Oldest</option>
+        <option value={SortKey.Title}>Title</option>
+        <option value={SortKey.Artist}>Artist</option>
       </select>
     </div>
   {/if}

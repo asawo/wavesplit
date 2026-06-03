@@ -9,6 +9,7 @@ import {
   waveformGradientId,
 } from "./playback.helpers";
 import type { StemKey, StemStateMap } from "./types";
+import { STEM_KEYS } from "./constants";
 
 describe("formatTime", () => {
   it("formats zero as 0:00", () => expect(formatTime(0)).toBe("0:00"));
@@ -111,7 +112,7 @@ function makeStemState(
   mutes: Partial<Record<StemKey, boolean>> = {},
 ): StemStateMap {
   return Object.fromEntries(
-    (["vocals", "drums", "bass", "other"] as StemKey[]).map((k) => [
+    STEM_KEYS.map((k) => [
       k,
       { muted: mutes[k] ?? false, soloed: solos[k] ?? false, volume: 1 },
     ]),
@@ -144,7 +145,7 @@ describe("applyToggleSolo", () => {
     s = applyToggleSolo(s, "drums");
     s = applyToggleSolo(s, "bass");
     s = applyToggleSolo(s, "other");
-    for (const k of ["vocals", "drums", "bass", "other"] as StemKey[]) {
+    for (const k of STEM_KEYS) {
       expect(s[k].soloed).toBe(true);
     }
   });
@@ -212,7 +213,7 @@ describe("computeMuted", () => {
       bass: true,
       other: true,
     });
-    for (const k of ["vocals", "drums", "bass", "other"] as StemKey[]) {
+    for (const k of STEM_KEYS) {
       expect(computeMuted(s, k)).toBe(false);
     }
   });

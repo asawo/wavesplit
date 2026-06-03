@@ -8,12 +8,18 @@
   import PipelineToast from "./lib/PipelineToast.svelte";
   import { checkDemucs, deleteTrack } from "./lib/commands";
   import type { Track, PipelineEvent, ToastTrack } from "./lib/types";
+  import {
+    PENDING_ID,
+    EVENT_PIPELINE,
+    TOAST_DISMISS_MS,
+    Screen,
+  } from "./lib/constants";
 
   let tracks: Track[] = $state([]);
   let refreshTracks: (() => Promise<void>) | null = $state(null);
   let ready = $state(true); // optimistic: assume available, overlay shows if not
 
-  let screen: "library" | "playback" = $state("library");
+  let screen: Screen = $state(Screen.Library);
   let selectedTrack: Track | null = $state(null);
 
   let toastTrack: ToastTrack | null = $state(null);
@@ -32,7 +38,7 @@
       ready = false;
     }
     unlistenPipeline = await listen<PipelineEvent>(
-      "pipeline",
+      EVENT_PIPELINE,
       ({ payload }) => {
         const { track_id, stage, status, message } = payload;
         if (!toastTrack || toastTrack.id !== track_id) return;
@@ -43,13 +49,11 @@
           if (toastDismissTimer) clearTimeout(toastDismissTimer);
           toastDismissTimer = setTimeout(() => {
             toastTrack = null;
-          }, 2000);
+          }, TOAST_DISMISS_MS);
         }
       },
     );
   });
-
-  const PENDING_ID = "__pending__";
 
   function handleStarted(title: string): void {
     tracks = [
@@ -109,11 +113,11 @@
 
   function openPlayback(track: Track): void {
     selectedTrack = track;
-    screen = "playback";
+    screen = Screen.Playback;
   }
 
   function closePlayback(): void {
-    screen = "library";
+    screen = Screen.Library;
     // keep selectedTrack alive so playhead position is preserved on return
   }
 
@@ -123,7 +127,7 @@
 </script>
 
 <div class="app fade-in">
-  <div class="screens-inner" class:show-playback={screen === "playback"}>
+  <div class="screens-inner" class:show-playback={screen === Screen.Playback}>
     <!-- Library screen -->
     <div class="screen">
       <header>
@@ -150,7 +154,7 @@
       {#if selectedTrack}
         <Playback
           track={selectedTrack}
-          active={screen === "playback"}
+          active={screen === Screen.Playback}
           onBack={closePlayback}
           onExportDone={handleExportDone}
         />

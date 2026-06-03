@@ -3,6 +3,7 @@ import { render, fireEvent, waitFor, cleanup } from "@testing-library/svelte";
 import Playback from "./Playback.svelte";
 import { invoke } from "@tauri-apps/api/core";
 import type { Track } from "./types";
+import { STEM_KEYS, MASTER_KEY, WAVEFORM_COLOR_MUTED } from "./constants";
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
@@ -128,7 +129,7 @@ describe("Waveform gradient rendering", () => {
       onBack: vi.fn(),
     });
     expect(container.querySelector("svg.waveform linearGradient")!.id).toBe(
-      "wf-t1-master",
+      `wf-t1-${MASTER_KEY}`,
     );
   });
 
@@ -141,7 +142,7 @@ describe("Waveform gradient rendering", () => {
     const rects = container.querySelectorAll("svg.waveform rect");
     expect(rects.length).toBe(120);
     for (const rect of rects) {
-      expect(rect.getAttribute("fill")).toBe("url(#wf-t1-master)");
+      expect(rect.getAttribute("fill")).toBe(`url(#wf-t1-${MASTER_KEY})`);
     }
   });
 
@@ -167,7 +168,7 @@ describe("Waveform gradient rendering", () => {
     const ids = Array.from(
       container.querySelectorAll("svg.stem-waveform linearGradient"),
     ).map((g) => g.id);
-    for (const key of ["vocals", "drums", "bass", "other"]) {
+    for (const key of STEM_KEYS) {
       expect(ids).toContain(`wf-t1-${key}`);
     }
   });
@@ -257,8 +258,8 @@ describe("Waveform gradient rendering", () => {
         'linearGradient[id="wf-t1-vocals"]',
       )!;
       const stops = gradient.querySelectorAll("stop");
-      expect(stops[0].getAttribute("stop-color")).toBe("#2e2e2e");
-      expect(stops[1].getAttribute("stop-color")).toBe("#2e2e2e");
+      expect(stops[0].getAttribute("stop-color")).toBe(WAVEFORM_COLOR_MUTED);
+      expect(stops[1].getAttribute("stop-color")).toBe(WAVEFORM_COLOR_MUTED);
     });
   });
 });
