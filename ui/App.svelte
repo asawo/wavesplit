@@ -1,10 +1,11 @@
 <script lang="ts">
   import { listen } from "@tauri-apps/api/event";
   import { onMount, onDestroy } from "svelte";
-  import AddTrack from "./lib/AddTrack.svelte";
   import TrackList from "./lib/TrackList.svelte";
   import Playback from "./lib/Playback.svelte";
   import Setup from "./lib/Setup.svelte";
+  import Sidebar from "./lib/Sidebar.svelte";
+  import AddTrackModal from "./lib/AddTrackModal.svelte";
   import PipelineToast from "./lib/PipelineToast.svelte";
   import { checkDemucs, deleteTrack } from "./lib/commands";
   import type { Track, PipelineEvent, ToastTrack } from "./lib/types";
@@ -124,44 +125,61 @@
   async function handleExportDone(): Promise<void> {
     await refreshTracks?.();
   }
+
+  let showAddModal = $state(false);
+
+  function openAddModal(): void {
+    showAddModal = true;
+  }
+
+  function closeAddModal(): void {
+    showAddModal = false;
+  }
 </script>
 
 <div class="app fade-in">
-  <div class="screens-inner" class:show-playback={screen === Screen.Playback}>
-    <!-- Library screen -->
-    <div class="screen">
-      <header>
-        <h1>Wavesplit</h1>
-      </header>
-      <main>
-        <section class="add-section">
-          <p class="section-label">Add track</p>
-          <AddTrack onAdded={handleAdded} onStarted={handleStarted} />
-        </section>
-        <section class="list-section">
-          <p class="section-label">Library</p>
+  <Sidebar
+    activeId="library"
+    onSelect={(id) => {
+      if (id === "library") closePlayback();
+    }}
+    onImport={openAddModal}
+  />
+  <div class="content">
+    <div class="screens-inner" class:show-playback={screen === Screen.Playback}>
+      <!-- Library screen -->
+      <div class="screen">
+        <main>
           <TrackList
             bind:tracks
             bind:refresh={refreshTracks}
             onPlay={openPlayback}
           />
-        </section>
-      </main>
-    </div>
+        </main>
+      </div>
 
-    <!-- Playback screen -->
-    <div class="screen">
-      {#if selectedTrack}
-        <Playback
-          track={selectedTrack}
-          active={screen === Screen.Playback}
-          onBack={closePlayback}
-          onExportDone={handleExportDone}
-        />
-      {/if}
+      <!-- Playback screen -->
+      <div class="screen">
+        {#if selectedTrack}
+          <Playback
+            track={selectedTrack}
+            active={screen === Screen.Playback}
+            onBack={closePlayback}
+            onExportDone={handleExportDone}
+          />
+        {/if}
+      </div>
     </div>
   </div>
 </div>
+
+{#if showAddModal}
+  <AddTrackModal
+    onClose={closeAddModal}
+    onStarted={handleStarted}
+    onAdded={handleAdded}
+  />
+{/if}
 
 {#if toastTrack}
   <PipelineToast
@@ -187,18 +205,20 @@
   }
 
   :global(:root) {
-    --bg: #1a1a1a;
-    --bg-panel: #202020;
-    --bg-input: #2a2a2a;
-    --bg-button: #2a2a2a;
-    --bg-button-hover: #363636;
-    --bg-track: #252525;
-    --bg-track-ready: #1e2a1e;
-    --bg-track-error: #2a1e1e;
+    --bg: #0a0a0a;
+    --bg-sidebar: #000;
+    --bg-panel: #161616;
+    --bg-input: #1f1f1f;
+    --bg-button: #1f1f1f;
+    --bg-button-hover: #2a2a2a;
+    --bg-track: #161616;
+    --bg-track-ready: #142014;
+    --bg-track-error: #201414;
     --fg: #e8e8e8;
     --fg-muted: #888;
-    --border: #3a3a3a;
+    --border: #2a2a2a;
     --accent: #4a9eff;
+    --accent-warm: #e87e3a;
     --color-error: #ff6b6b;
     --color-processing: #f0a030;
     --color-ready: #4caf72;
@@ -217,41 +237,53 @@
     animation: fade-in 0.15s ease-out both;
   }
 
-  :global(.open-btn) {
-    padding: 4px 10px;
-    border: 1px solid var(--border);
-    border-radius: 4px;
+  /* Base button: default radius, type, layout. Apply with class="btn …" */
+  :global(.btn) {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border: 1px solid transparent;
+    border-radius: 6px;
     background: transparent;
     color: var(--fg);
+    font-family: inherit;
     font-size: 12px;
+    font-weight: 400;
     cursor: pointer;
     white-space: nowrap;
   }
 
-  :global(.open-btn:hover) {
+  :global(.btn:disabled) {
+    opacity: 0.5;
+    cursor: default;
+  }
+
+  :global(.btn svg) {
+    flex-shrink: 0;
+  }
+
+  /* Variants — only set what differs from .btn */
+
+  :global(.open-btn) {
+    border-color: var(--border);
+  }
+
+  :global(.open-btn:hover:not(:disabled)) {
     border-color: var(--fg-muted);
     background: var(--bg-button-hover);
   }
 
   :global(.export-btn) {
-    padding: 4px 12px;
-    border: 1px solid var(--accent);
-    border-radius: 4px;
-    background: transparent;
-    color: var(--accent);
-    font-size: 12px;
-    cursor: pointer;
-    white-space: nowrap;
+    border-color: var(--color-ready);
+    background: var(--color-ready);
+    color: #0a0a0a;
+    font-weight: 500;
   }
 
   :global(.export-btn:hover:not(:disabled)) {
-    background: var(--accent);
-    color: #fff;
-  }
-
-  :global(.export-btn:disabled) {
-    opacity: 0.5;
-    cursor: default;
+    background: #5cc283;
+    border-color: #5cc283;
   }
 
   :global(body) {
@@ -265,6 +297,14 @@
 
   .app {
     height: 100vh;
+    overflow: hidden;
+    display: flex;
+  }
+
+  .content {
+    flex: 1;
+    min-width: 0;
+    height: 100%;
     overflow: hidden;
   }
 
@@ -288,51 +328,13 @@
     flex-direction: column;
   }
 
-  header {
-    padding: 14px 20px 12px;
-    border-bottom: 1px solid var(--border);
-    flex-shrink: 0;
-  }
-
-  h1 {
-    margin: 0;
-    font-size: 24px;
-    font-family: "Oleo Script Swash Caps", cursive;
-    font-weight: 400;
-    color: var(--color-ready);
-  }
-
   main {
     display: flex;
     flex-direction: column;
     flex: 1;
     overflow: hidden;
-    padding: 16px 20px;
+    padding: 20px 24px;
     gap: 20px;
-  }
-
-  .section-label {
-    margin: 0 0 8px;
-    font-size: 10px;
-    font-weight: 600;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--fg-muted);
-  }
-
-  .add-section {
-    flex-shrink: 0;
-    background: var(--bg-panel);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 12px 14px;
-  }
-
-  .list-section {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
   }
 
   .overlay {

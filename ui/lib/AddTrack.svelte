@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { open as openDialog } from "@tauri-apps/plugin-dialog";
-  import { addTrackYoutube, addTrackLocal } from "./commands";
+  import { addTrackYoutube } from "./commands";
+  import { pickAndImportLocal } from "./importTrack";
 
   interface Props {
     onAdded: (id: string | null) => Promise<void>;
@@ -52,27 +52,14 @@
   }
 
   async function addLocal() {
-    const selected = await openDialog({
-      multiple: false,
-      filters: [
-        {
-          name: "Audio",
-          extensions: ["mp3", "wav", "flac", "m4a", "aac", "ogg"],
-        },
-      ],
-    });
-    if (!selected) return;
     loading = true;
     error = "";
-    // Normalize backslashes for Windows paths (display only — `selected` is passed as-is to the backend)
-    onStarted(selected.replace(/\\/g, "/").split("/").pop() ?? "Local file");
     try {
-      const result = await addTrackLocal(selected);
-      if (result.duplicate) error = "This track is already in your library";
-      onAdded(result.id);
-    } catch (e) {
-      error = String(e);
-      onAdded(null);
+      await pickAndImportLocal({
+        onStarted,
+        onAdded,
+        onError: (msg) => (error = msg),
+      });
     } finally {
       loading = false;
     }
