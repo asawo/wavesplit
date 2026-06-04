@@ -69,7 +69,7 @@
     border-right: 1px solid var(--border);
     display: flex;
     flex-direction: column;
-    padding: 20px 0 0;
+    padding: 12px 0 0;
   }
 
   .brand {

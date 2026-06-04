@@ -541,7 +541,10 @@
     display: flex;
     gap: 12px;
     align-items: center;
-    margin-bottom: 20px;
+    margin-inline: -24px;
+    padding: 0 24px 12px;
+    margin-bottom: 12px;
+    border-bottom: 1px solid var(--border);
     flex-shrink: 0;
   }
 
@@ -619,7 +622,7 @@
   }
 
   .library-header {
-    margin: 0 0 16px;
+    margin: 0 0 12px;
     flex-shrink: 0;
   }
 
@@ -678,7 +681,7 @@
     display: grid;
     grid-template-columns: minmax(0, 400px) minmax(0, 240px) 1fr 200px;
     align-items: center;
-    padding: 10px 12px;
+    padding: 7px 12px;
     border-left: 3px solid transparent;
     border-radius: 6px;
     background: var(--bg-track);

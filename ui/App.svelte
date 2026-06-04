@@ -333,7 +333,7 @@
     flex-direction: column;
     flex: 1;
     overflow: hidden;
-    padding: 20px 24px;
+    padding: 12px 24px 20px;
     gap: 20px;
   }
 
