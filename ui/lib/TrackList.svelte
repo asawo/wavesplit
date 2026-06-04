@@ -195,6 +195,20 @@
   function isProcessing(track: Track): boolean {
     return !isReady(track) && !hasError(track, progress);
   }
+
+  function statusDotClass(track: Track): string {
+    if (track.id === PENDING_ID) return "pending";
+    if (hasError(track, progress)) return "error";
+    if (isReady(track)) return "ready";
+    return "processing";
+  }
+
+  function statusText(track: Track): string {
+    if (track.id === PENDING_ID) return "ADDING";
+    if (hasError(track, progress)) return "ERROR";
+    if (isReady(track)) return "READY";
+    return statusLabel(track, progress).replace(/…$/, "").toUpperCase();
+  }
 </script>
 
 <svelte:window
@@ -265,146 +279,170 @@
     <p>Manage and export your separated audio stems.</p>
   </header>
 
-  <div class="tracks-scroll">
-    {#if editError}
-      <p class="export-error">
-        {editError}
-        <button class="dismiss-error" onclick={() => (editError = "")}>×</button
+  <div class="tracks-table">
+    <div class="tracks-header">
+      <span class="col-label">Track title</span>
+      <span class="col-label">Artist</span>
+      <span></span>
+      <span class="col-label status-label">Status</span>
+      <span class="col-label actions-label">Actions</span>
+    </div>
+    <div class="tracks-scroll">
+      {#if editError}
+        <p class="export-error">
+          {editError}
+          <button class="dismiss-error" onclick={() => (editError = "")}
+            >×</button
+          >
+        </p>
+      {/if}
+
+      {#if deleteError}
+        <p class="export-error">
+          {deleteError}
+          <button class="dismiss-error" onclick={() => (deleteError = "")}
+            >×</button
+          >
+        </p>
+      {/if}
+
+      {#if exportError}
+        <p class="export-error">
+          {exportError}
+          <button class="dismiss-error" onclick={() => (exportError = "")}
+            >×</button
+          >
+        </p>
+      {/if}
+
+      {#if retryError}
+        <p class="export-error">
+          {retryError}
+          <button class="dismiss-error" onclick={() => (retryError = "")}
+            >×</button
+          >
+        </p>
+      {/if}
+
+      {#if tracks.length === 0}
+        <p class="empty">
+          No tracks yet. Add a YouTube URL or open a local file.
+        </p>
+      {/if}
+
+      {#each displayTracks as track (track.id)}
+        <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+        <div
+          class="track"
+          class:ready={isReady(track)}
+          class:error={hasError(track, progress)}
+          class:pending={track.id === PENDING_ID}
+          class:playable={isReady(track)}
+          role={isReady(track) ? "button" : undefined}
+          tabindex={isReady(track) ? 0 : undefined}
+          onclick={() => {
+            if (isReady(track) && editingId !== track.id) onPlay(track);
+          }}
         >
-      </p>
-    {/if}
-
-    {#if deleteError}
-      <p class="export-error">
-        {deleteError}
-        <button class="dismiss-error" onclick={() => (deleteError = "")}
-          >×</button
-        >
-      </p>
-    {/if}
-
-    {#if exportError}
-      <p class="export-error">
-        {exportError}
-        <button class="dismiss-error" onclick={() => (exportError = "")}
-          >×</button
-        >
-      </p>
-    {/if}
-
-    {#if retryError}
-      <p class="export-error">
-        {retryError}
-        <button class="dismiss-error" onclick={() => (retryError = "")}
-          >×</button
-        >
-      </p>
-    {/if}
-
-    {#if tracks.length === 0}
-      <p class="empty">
-        No tracks yet. Add a YouTube URL or open a local file.
-      </p>
-    {/if}
-
-    {#each displayTracks as track (track.id)}
-      <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-      <div
-        class="track"
-        class:ready={isReady(track)}
-        class:error={hasError(track, progress)}
-        class:pending={track.id === PENDING_ID}
-        class:playable={isReady(track)}
-        role={isReady(track) ? "button" : undefined}
-        tabindex={isReady(track) ? 0 : undefined}
-        onclick={() => {
-          if (isReady(track) && editingId !== track.id) onPlay(track);
-        }}
-      >
-        <div class="track-info">
-          {#if track.id === PENDING_ID}
-            <span class="title">{track.title}</span>
-            <span class="status processing">Adding…</span>
-          {:else if editingId === track.id}
-            <input
-              class="edit-input title-input"
-              bind:value={editTitle}
-              onblur={() => commitEdit(track)}
-              onkeydown={(e) => onEditKeydown(e, track)}
-            />
-          {:else}
-            <span
-              class="title"
-              onclick={(e) => {
-                e.stopPropagation();
-                startEdit(track);
-              }}
-              onkeydown={(e) => {
-                e.stopPropagation();
-                e.key === "Enter" && startEdit(track);
-              }}
-              role="button"
-              tabindex="0"
-            >
-              {track.title}
-            </span>
-          {/if}
-          {#if track.id !== PENDING_ID && !isReady(track)}
-            <span class="status" class:processing={isProcessing(track)}>
-              {statusLabel(track, progress)}
-            </span>
-            {#if isProcessing(track)}
-              <div class="progress-bar">
-                <div
-                  class="progress-fill"
-                  style="width: {progressPct(track, progress)}%"
-                ></div>
-              </div>
+          <div class="track-info">
+            {#if editingId === track.id}
+              <input
+                class="edit-input title-input"
+                bind:value={editTitle}
+                onblur={() => commitEdit(track)}
+                onkeydown={(e) => onEditKeydown(e, track)}
+              />
+            {:else}
+              <span
+                class="title"
+                onclick={(e) => {
+                  if (track.id === PENDING_ID) return;
+                  e.stopPropagation();
+                  startEdit(track);
+                }}
+                onkeydown={(e) => {
+                  if (track.id === PENDING_ID) return;
+                  e.stopPropagation();
+                  e.key === "Enter" && startEdit(track);
+                }}
+                role="button"
+                tabindex="0"
+              >
+                {track.title}
+              </span>
             {/if}
-          {/if}
-        </div>
-        <div class="track-artist">
-          {#if track.id === PENDING_ID}
-            <!-- empty cell -->
-          {:else if editingId === track.id}
-            <input
-              class="edit-input artist-input"
-              placeholder="Artist"
-              bind:value={editArtist}
-              onblur={() => commitEdit(track)}
-              onkeydown={(e) => onEditKeydown(e, track)}
-            />
-          {:else}
-            <span
-              class="artist"
-              onclick={(e) => {
-                e.stopPropagation();
-                startEdit(track);
-              }}
-              onkeydown={(e) => {
-                e.stopPropagation();
-                e.key === "Enter" && startEdit(track);
-              }}
-              role="button"
-              tabindex="0"
-            >
-              {track.artist ?? "—"}
-            </span>
-          {/if}
-        </div>
-        <div class="track-actions">
-          {#if track.id === PENDING_ID}
-            <span class="spinner" aria-label="Adding track"></span>
-          {:else}
-            {#if isReady(track)}
-              {#if track.export_path}
+          </div>
+          <div class="track-artist">
+            {#if track.id === PENDING_ID}
+              <!-- empty cell -->
+            {:else if editingId === track.id}
+              <input
+                class="edit-input artist-input"
+                placeholder="Artist"
+                bind:value={editArtist}
+                onblur={() => commitEdit(track)}
+                onkeydown={(e) => onEditKeydown(e, track)}
+              />
+            {:else}
+              <span
+                class="artist"
+                onclick={(e) => {
+                  e.stopPropagation();
+                  startEdit(track);
+                }}
+                onkeydown={(e) => {
+                  e.stopPropagation();
+                  e.key === "Enter" && startEdit(track);
+                }}
+                role="button"
+                tabindex="0"
+              >
+                {track.artist ?? "—"}
+              </span>
+            {/if}
+          </div>
+          <div class="track-status">
+            <span class="status-dot {statusDotClass(track)}"></span>
+            <span class="status-text">{statusText(track)}</span>
+          </div>
+          <div class="track-actions">
+            {#if track.id !== PENDING_ID}
+              {#if isReady(track)}
+                {#if track.export_path}
+                  <button
+                    class="btn open-btn"
+                    onclick={(e) => {
+                      e.stopPropagation();
+                      openFolder(track.export_path!);
+                    }}
+                    title={track.export_path!}
+                    disabled={exportingId === track.id ||
+                      deletingId === track.id}
+                  >
+                    <svg
+                      viewBox="0 0 24 24"
+                      width="14"
+                      height="14"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      aria-hidden="true"
+                    >
+                      <path
+                        d="M4 4h5l2 3h9a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z"
+                      />
+                    </svg>
+                    Open
+                  </button>
+                {/if}
                 <button
-                  class="btn open-btn"
+                  class="btn export-btn"
                   onclick={(e) => {
                     e.stopPropagation();
-                    openFolder(track.export_path!);
+                    exportStems(track);
                   }}
-                  title={track.export_path!}
                   disabled={exportingId === track.id || deletingId === track.id}
                 >
                   <svg
@@ -418,114 +456,91 @@
                     stroke-linejoin="round"
                     aria-hidden="true"
                   >
-                    <path
-                      d="M4 4h5l2 3h9a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z"
-                    />
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="7 10 12 15 17 10" />
+                    <line x1="12" y1="15" x2="12" y2="3" />
                   </svg>
-                  Open
+                  {exportingId === track.id ? "Exporting…" : "Export"}
                 </button>
               {/if}
-              <button
-                class="btn export-btn"
-                onclick={(e) => {
-                  e.stopPropagation();
-                  exportStems(track);
-                }}
-                disabled={exportingId === track.id || deletingId === track.id}
-              >
-                <svg
-                  viewBox="0 0 24 24"
-                  width="14"
-                  height="14"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  aria-hidden="true"
+              {#if hasError(track, progress)}
+                <button
+                  class="retry-btn"
+                  onclick={(e) => {
+                    e.stopPropagation();
+                    retryTrack(track);
+                  }}
+                  disabled={retryingId === track.id}
                 >
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                  <polyline points="7 10 12 15 17 10" />
-                  <line x1="12" y1="15" x2="12" y2="3" />
-                </svg>
-                {exportingId === track.id ? "Exporting…" : "Export"}
-              </button>
-            {/if}
-            {#if hasError(track, progress)}
-              <button
-                class="retry-btn"
-                onclick={(e) => {
-                  e.stopPropagation();
-                  retryTrack(track);
-                }}
-                disabled={retryingId === track.id}
-              >
-                {retryingId === track.id ? "Retrying…" : "↺ Retry"}
-              </button>
-            {/if}
-            <div class="track-menu">
-              <button
-                class="menu-trigger"
-                onclick={(e) => {
-                  e.stopPropagation();
-                  openMenuId = openMenuId === track.id ? null : track.id;
-                }}
-                disabled={exportingId === track.id ||
-                  deletingId === track.id ||
-                  retryingId === track.id}
-                aria-haspopup="menu"
-                aria-expanded={openMenuId === track.id}
-                aria-label="Track actions"
-              >
-                <svg
-                  viewBox="0 0 24 24"
-                  width="16"
-                  height="16"
-                  fill="currentColor"
-                  aria-hidden="true"
-                >
-                  <circle cx="12" cy="5" r="1.6" />
-                  <circle cx="12" cy="12" r="1.6" />
-                  <circle cx="12" cy="19" r="1.6" />
-                </svg>
-              </button>
-              {#if openMenuId === track.id}
-                <div class="menu-dropdown" role="menu">
-                  <button
-                    class="menu-item destructive"
-                    role="menuitem"
-                    onclick={(e) => {
-                      e.stopPropagation();
-                      openMenuId = null;
-                      deleteTrack(track);
-                    }}
-                  >
-                    <svg
-                      viewBox="0 0 24 24"
-                      width="14"
-                      height="14"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      aria-hidden="true"
-                    >
-                      <polyline points="3 6 5 6 21 6" />
-                      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-                      <path d="M10 11v6" />
-                      <path d="M14 11v6" />
-                      <path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2" />
-                    </svg>
-                    Delete track
-                  </button>
-                </div>
+                  {retryingId === track.id ? "Retrying…" : "↺ Retry"}
+                </button>
               {/if}
-            </div>
-          {/if}
+              <div class="track-menu">
+                <button
+                  class="menu-trigger"
+                  onclick={(e) => {
+                    e.stopPropagation();
+                    openMenuId = openMenuId === track.id ? null : track.id;
+                  }}
+                  disabled={exportingId === track.id ||
+                    deletingId === track.id ||
+                    retryingId === track.id}
+                  aria-haspopup="menu"
+                  aria-expanded={openMenuId === track.id}
+                  aria-label="Track actions"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    width="16"
+                    height="16"
+                    fill="currentColor"
+                    aria-hidden="true"
+                  >
+                    <circle cx="12" cy="5" r="1.6" />
+                    <circle cx="12" cy="12" r="1.6" />
+                    <circle cx="12" cy="19" r="1.6" />
+                  </svg>
+                </button>
+                {#if openMenuId === track.id}
+                  <div class="menu-dropdown" role="menu">
+                    <button
+                      class="menu-item destructive"
+                      role="menuitem"
+                      onclick={(e) => {
+                        e.stopPropagation();
+                        openMenuId = null;
+                        deleteTrack(track);
+                      }}
+                    >
+                      <svg
+                        viewBox="0 0 24 24"
+                        width="14"
+                        height="14"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        aria-hidden="true"
+                      >
+                        <polyline points="3 6 5 6 21 6" />
+                        <path
+                          d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"
+                        />
+                        <path d="M10 11v6" />
+                        <path d="M14 11v6" />
+                        <path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2" />
+                      </svg>
+                      Delete track
+                    </button>
+                  </div>
+                {/if}
+              </div>
+            {/if}
+          </div>
         </div>
-      </div>
-    {/each}
+      {/each}
+    </div>
   </div>
 </div>
 
@@ -639,13 +654,47 @@
     color: var(--fg-muted);
   }
 
+  .tracks-table {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    background: var(--bg-track);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+
+  .tracks-header {
+    display: grid;
+    grid-template-columns: minmax(0, 400px) minmax(0, 240px) 1fr 160px 200px;
+    column-gap: 16px;
+    align-items: center;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    background: rgba(0, 0, 0, 0.25);
+    flex-shrink: 0;
+  }
+
+  .col-label {
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--fg-muted);
+  }
+
+  .actions-label {
+    grid-column: 5;
+    justify-self: end;
+  }
+
   .tracks-scroll {
     flex: 1;
     overflow-y: auto;
     min-height: 0;
     display: flex;
     flex-direction: column;
-    gap: 4px;
   }
 
   .export-error {
@@ -679,17 +728,17 @@
 
   .track {
     display: grid;
-    grid-template-columns: minmax(0, 400px) minmax(0, 240px) 1fr 200px;
+    grid-template-columns: minmax(0, 400px) minmax(0, 240px) 1fr 160px 200px;
     align-items: center;
+    min-height: 42px;
     padding: 7px 12px;
-    border-left: 3px solid transparent;
-    border-radius: 6px;
-    background: var(--bg-track);
+    border-bottom: 1px solid var(--border);
+    background: transparent;
     column-gap: 16px;
   }
 
-  .track.ready {
-    border-left-color: var(--color-ready);
+  .track:last-child {
+    border-bottom: none;
   }
 
   .track.error {
@@ -760,30 +809,50 @@
     font-size: 12px;
   }
 
-  .status {
-    font-size: 11px;
+  .track-status {
+    grid-column: 4;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+
+  .status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .status-dot.ready {
+    background: var(--color-ready);
+  }
+
+  .status-dot.error {
+    background: var(--color-error);
+  }
+
+  .status-dot.processing,
+  .status-dot.pending {
+    background: #f5c518;
+    animation: status-pulse 1.4s ease-in-out infinite;
+  }
+
+  @keyframes status-pulse {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.35;
+    }
+  }
+
+  .status-text {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
     color: var(--fg-muted);
-  }
-
-  .status.processing {
-    color: var(--color-processing);
-  }
-
-  .progress-bar {
-    height: 3px;
-    background: var(--border);
-    border-radius: 2px;
-    overflow: hidden;
-    margin-top: 5px;
-    width: 100%;
-    max-width: 240px;
-  }
-
-  .progress-fill {
-    height: 100%;
-    background: var(--color-processing);
-    border-radius: 2px;
-    transition: width 0.4s ease;
   }
 
   .track-actions {
@@ -792,7 +861,7 @@
     justify-content: flex-end;
     gap: 10px;
     justify-self: end;
-    grid-column: 4;
+    grid-column: 5;
   }
 
   .retry-btn {
@@ -888,22 +957,5 @@
 
   .track.pending {
     opacity: 0.7;
-  }
-
-  .spinner {
-    display: inline-block;
-    width: 14px;
-    height: 14px;
-    border: 2px solid var(--border);
-    border-top-color: var(--color-processing);
-    border-radius: 50%;
-    animation: spin 0.7s linear infinite;
-    flex-shrink: 0;
-  }
-
-  @keyframes spin {
-    to {
-      transform: rotate(360deg);
-    }
   }
 </style>

@@ -210,7 +210,7 @@
     <div class="divider"><span>or</span></div>
 
     <section class="field">
-      <span class="label">Local file upload</span>
+      <span class="label">Import Local File</span>
       <button
         class="drop-zone"
         class:dragging={isDragging}
