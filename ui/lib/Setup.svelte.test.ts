@@ -23,10 +23,10 @@ afterEach(() => {
 describe("Setup concurrency guard", () => {
   it("registers only one event listener when startDownload is triggered twice in quick succession", async () => {
     // listen() never resolves, so downloading stays true for the duration of the test
-    listen.mockReturnValue(new Promise(() => {}));
+    vi.mocked(listen).mockReturnValue(new Promise(() => {}));
 
     const { container } = render(Setup, { onReady: vi.fn() });
-    const btn = container.querySelector("button");
+    const btn = container.querySelector("button")!;
 
     // Fire two clicks without awaiting — the handler for the first click runs
     // synchronously up to `await listen()`, setting downloading=true before the
@@ -46,16 +46,19 @@ describe("Setup listener cleanup on retry", () => {
     const unlisten1 = vi.fn();
     const unlisten2 = vi.fn();
 
-    listen.mockResolvedValueOnce(unlisten1).mockResolvedValueOnce(unlisten2);
+    vi.mocked(listen)
+      .mockResolvedValueOnce(unlisten1)
+      .mockResolvedValueOnce(unlisten2);
 
     // First attempt fails so the user can retry
-    invoke.mockRejectedValueOnce(new Error("network error"));
-    invoke.mockResolvedValueOnce(undefined);
+    vi.mocked(invoke)
+      .mockRejectedValueOnce(new Error("network error"))
+      .mockResolvedValueOnce(undefined);
 
     const { container } = render(Setup, { onReady: vi.fn() });
 
     // First download attempt — invoke rejects → error shown, downloading reset to false
-    await fireEvent.click(container.querySelector("button"));
+    await fireEvent.click(container.querySelector("button")!);
     await waitFor(() =>
       expect(container.querySelector(".error")).not.toBeNull(),
     );
@@ -64,7 +67,7 @@ describe("Setup listener cleanup on retry", () => {
     expect(unlisten1).not.toHaveBeenCalled();
 
     // Retry — startDownload() should call unlisten1() before registering the new listener
-    await fireEvent.click(container.querySelector("button"));
+    await fireEvent.click(container.querySelector("button")!);
     await waitFor(() => expect(listen).toHaveBeenCalledTimes(2));
 
     expect(unlisten1).toHaveBeenCalledTimes(1);

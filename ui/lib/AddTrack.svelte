@@ -1,8 +1,13 @@
-<script>
-  import { invoke } from "@tauri-apps/api/core";
+<script lang="ts">
   import { open as openDialog } from "@tauri-apps/plugin-dialog";
+  import { addTrackYoutube, addTrackLocal } from "./commands";
 
-  let { onAdded, onStarted } = $props();
+  interface Props {
+    onAdded: (id: string | null) => Promise<void>;
+    onStarted: (title: string) => void;
+  }
+
+  let { onAdded, onStarted }: Props = $props();
 
   let url = $state("");
   let loading = $state(false);
@@ -11,13 +16,13 @@
   const YOUTUBE_PATTERN =
     "https://(www\\.youtube\\.com|youtu\\.be|music\\.youtube\\.com)/.+";
 
-  function normalizeUrl(value) {
+  function normalizeUrl(value: string): string {
     const trimmed = value.trim();
     if (trimmed && !/^https?:\/\//i.test(trimmed)) return "https://" + trimmed;
     return trimmed;
   }
 
-  function isValidYoutubeUrl(value) {
+  function isValidYoutubeUrl(value: string): boolean {
     return new RegExp("^" + YOUTUBE_PATTERN + "$").test(normalizeUrl(value));
   }
 
@@ -35,7 +40,7 @@
     url = "";
     onStarted(pendingUrl);
     try {
-      const result = await invoke("add_track_youtube", { url: pendingUrl });
+      const result = await addTrackYoutube(pendingUrl);
       if (result.duplicate) error = "This track is already in your library";
       onAdded(result.id);
     } catch (e) {
@@ -62,7 +67,7 @@
     // Normalize backslashes for Windows paths (display only — `selected` is passed as-is to the backend)
     onStarted(selected.replace(/\\/g, "/").split("/").pop() ?? "Local file");
     try {
-      const result = await invoke("add_track_local", { path: selected });
+      const result = await addTrackLocal(selected);
       if (result.duplicate) error = "This track is already in your library";
       onAdded(result.id);
     } catch (e) {

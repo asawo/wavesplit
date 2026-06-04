@@ -1,4 +1,6 @@
-export function fuzzy(query, target) {
+import type { Track, ProgressMap } from "./types";
+
+export function fuzzy(query: string, target: string): boolean {
   query = query.toLowerCase();
   target = target.toLowerCase();
   let qi = 0;
@@ -8,32 +10,36 @@ export function fuzzy(query, target) {
   return qi === query.length;
 }
 
-export const SORT_FNS = {
+export const SORT_FNS: Record<string, (a: Track, b: Track) => number> = {
   newest: (a, b) => b.sort_order - a.sort_order,
   oldest: (a, b) => a.sort_order - b.sort_order,
   title: (a, b) => a.title.localeCompare(b.title),
   artist: (a, b) => (a.artist ?? "").localeCompare(b.artist ?? ""),
 };
 
-export function stageLabel(stage) {
+export function stageLabel(stage: string): string {
   return (
-    {
-      download: "Downloading…",
-      stems: "Separating stems…",
-      analysis: "Analyzing…",
-    }[stage] ?? stage
+    (
+      {
+        download: "Downloading…",
+        stems: "Separating stems…",
+        analysis: "Analyzing…",
+      } as Record<string, string>
+    )[stage] ?? stage
   );
 }
 
-export function nextStage(stage) {
-  return { download: "stems", stems: "analysis" }[stage];
+export function nextStage(stage: string): string | undefined {
+  return ({ download: "stems", stems: "analysis" } as Record<string, string>)[
+    stage
+  ];
 }
 
-export function isReady(track) {
+export function isReady(track: Track): boolean {
   return track.status_analysis === "done";
 }
 
-export function hasError(track, progress) {
+export function hasError(track: Track, progress?: ProgressMap): boolean {
   const p = progress?.[track.id];
   if (p?.status === "error") return true;
   return (
@@ -43,9 +49,13 @@ export function hasError(track, progress) {
   );
 }
 
-export const STAGE_PROGRESS = { download: 15, stems: 50, analysis: 85 };
+export const STAGE_PROGRESS: Record<string, number> = {
+  download: 15,
+  stems: 50,
+  analysis: 85,
+};
 
-export function progressPct(track, progress) {
+export function progressPct(track: Track, progress: ProgressMap): number {
   if (isReady(track)) return 100;
   const p = progress?.[track.id];
   if (!p) return 0;
@@ -53,13 +63,13 @@ export function progressPct(track, progress) {
   return p.status === "done" ? base + 15 : base;
 }
 
-export function statusLabel(track, progress) {
+export function statusLabel(track: Track, progress: ProgressMap): string {
   const p = progress?.[track.id];
   if (p) {
     if (p.status === "error") return `Error: ${p.message ?? p.stage}`;
     if (p.status === "started") return stageLabel(p.stage);
     if (p.status === "done" && p.stage !== "analysis")
-      return stageLabel(nextStage(p.stage));
+      return stageLabel(nextStage(p.stage)!);
   }
   if (track.status_analysis === "done") return "Ready";
   if (

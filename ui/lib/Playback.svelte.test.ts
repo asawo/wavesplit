@@ -2,10 +2,12 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, fireEvent, waitFor, cleanup } from "@testing-library/svelte";
 import Playback from "./Playback.svelte";
 import { invoke } from "@tauri-apps/api/core";
+import type { Track } from "./types";
+import { STEM_KEYS, MASTER_KEY, WAVEFORM_COLOR_MUTED } from "./constants";
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
-  convertFileSrc: vi.fn((path) => `asset://${path}`),
+  convertFileSrc: vi.fn((path: string) => `asset://${path}`),
 }));
 
 vi.mock("@tauri-apps/plugin-dialog", () => ({
@@ -44,21 +46,27 @@ function makeAudioCtx() {
   };
 }
 
-function makeTrack(id) {
+function makeTrack(id: string): Track {
   return {
     id,
     title: `Track ${id}`,
     artist: null,
+    sort_order: 1,
     status_download: "done",
     status_stems: "done",
     status_analysis: "done",
     error_message: null,
     duration_ms: 10000,
+    export_path: null,
+    source_type: "local",
+    source_url: null,
+    source_path: null,
+    created_at: "",
   };
 }
 
-let audioCtx;
-let cancelAnimationFrameSpy;
+let audioCtx: ReturnType<typeof makeAudioCtx>;
+let cancelAnimationFrameSpy: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
   audioCtx = makeAudioCtx();
@@ -80,7 +88,7 @@ beforeEach(() => {
     }),
   );
 
-  invoke.mockResolvedValue({
+  vi.mocked(invoke).mockResolvedValue({
     bass: "/stems/bass.wav",
     drums: "/stems/drums.wav",
     vocals: "/stems/vocals.wav",
@@ -94,9 +102,11 @@ afterEach(() => {
 });
 
 // Wait until the play button is enabled (audio has finished loading)
-async function waitForAudio(container) {
+async function waitForAudio(container: HTMLElement) {
   await waitFor(() => {
-    const btn = container.querySelector(".play-btn");
+    const btn = container.querySelector(
+      ".play-btn",
+    ) as HTMLButtonElement | null;
     if (!btn || btn.disabled) throw new Error("audio not loaded yet");
   });
 }
@@ -118,8 +128,8 @@ describe("Waveform gradient rendering", () => {
       active: true,
       onBack: vi.fn(),
     });
-    expect(container.querySelector("svg.waveform linearGradient").id).toBe(
-      "wf-t1-master",
+    expect(container.querySelector("svg.waveform linearGradient")!.id).toBe(
+      `wf-t1-${MASTER_KEY}`,
     );
   });
 
@@ -132,7 +142,7 @@ describe("Waveform gradient rendering", () => {
     const rects = container.querySelectorAll("svg.waveform rect");
     expect(rects.length).toBe(120);
     for (const rect of rects) {
-      expect(rect.getAttribute("fill")).toBe("url(#wf-t1-master)");
+      expect(rect.getAttribute("fill")).toBe(`url(#wf-t1-${MASTER_KEY})`);
     }
   });
 
@@ -158,7 +168,7 @@ describe("Waveform gradient rendering", () => {
     const ids = Array.from(
       container.querySelectorAll("svg.stem-waveform linearGradient"),
     ).map((g) => g.id);
-    for (const key of ["vocals", "drums", "bass", "other"]) {
+    for (const key of STEM_KEYS) {
       expect(ids).toContain(`wf-t1-${key}`);
     }
   });
@@ -204,7 +214,7 @@ describe("Waveform gradient rendering", () => {
   });
 
   it("updates gradient stop offsets when playhead advances", async () => {
-    let capturedTick;
+    let capturedTick: FrameRequestCallback | undefined;
     vi.mocked(requestAnimationFrame).mockImplementationOnce((cb) => {
       capturedTick = cb;
       return 1;
@@ -217,12 +227,12 @@ describe("Waveform gradient rendering", () => {
     });
     await waitForAudio(container);
 
-    await fireEvent.click(container.querySelector(".play-btn"));
+    await fireEvent.click(container.querySelector(".play-btn")!);
     expect(capturedTick).toBeDefined();
 
     // Advance audio time to half the 10s track (duration comes from mockBuffer.duration = 10)
     audioCtx.currentTime = 5;
-    capturedTick();
+    capturedTick!(0);
 
     await waitFor(() => {
       const stops = container.querySelectorAll(
@@ -246,10 +256,10 @@ describe("Waveform gradient rendering", () => {
     await waitFor(() => {
       const gradient = container.querySelector(
         'linearGradient[id="wf-t1-vocals"]',
-      );
+      )!;
       const stops = gradient.querySelectorAll("stop");
-      expect(stops[0].getAttribute("stop-color")).toBe("#2e2e2e");
-      expect(stops[1].getAttribute("stop-color")).toBe("#2e2e2e");
+      expect(stops[0].getAttribute("stop-color")).toBe(WAVEFORM_COLOR_MUTED);
+      expect(stops[1].getAttribute("stop-color")).toBe(WAVEFORM_COLOR_MUTED);
     });
   });
 });
@@ -265,7 +275,7 @@ describe("Playback resource management", () => {
     await waitForAudio(container);
 
     // Start playback — schedTick() → requestAnimationFrame, setting rafId
-    await fireEvent.click(container.querySelector(".play-btn"));
+    await fireEvent.click(container.querySelector(".play-btn")!);
     expect(requestAnimationFrame).toHaveBeenCalled();
 
     // Reset spy so we only capture cancellations from the track switch

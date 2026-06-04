@@ -6,7 +6,7 @@ on:
       - "v[0-9]*"
 
 env:
-  YT_DLP_VERSION: "2025.03.31"     # https://github.com/yt-dlp/yt-dlp/releases
+  YT_DLP_VERSION: "2026.03.17"     # https://github.com/yt-dlp/yt-dlp/releases
   FFMPEG_MACOS_VERSION: "7.1.1"    # https://evermeet.cx/ffmpeg/ (check for latest release zip name)
   FFMPEG_LINUX_VERSION: "6.1"      # https://ffbinaries.com/api/v1/versions
   FFMPEG_WIN_VERSION: "7.1"  # pins ffmpeg minor version; uses BtbN "latest" release tag (stable filenames per minor version)

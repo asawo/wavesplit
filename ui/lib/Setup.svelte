@@ -1,15 +1,21 @@
-<script>
-  import { invoke } from "@tauri-apps/api/core";
+<script lang="ts">
   import { listen } from "@tauri-apps/api/event";
   import { onDestroy } from "svelte";
+  import { downloadDemucs } from "./commands";
+  import type { SetupProgress } from "./types";
+  import { EVENT_SETUP_PROGRESS } from "./constants";
 
-  let { onReady } = $props();
+  interface Props {
+    onReady: () => void;
+  }
+
+  let { onReady }: Props = $props();
 
   let downloading = $state(false);
-  let error = $state(null);
-  let progress = $state(null); // { downloaded_mb, total_mb, percent }
+  let error: string | null = $state(null);
+  let progress: SetupProgress | null = $state(null);
 
-  let unlisten;
+  let unlisten: (() => void) | undefined;
   onDestroy(() => unlisten?.());
 
   async function startDownload() {
@@ -19,12 +25,12 @@
     error = null;
     progress = null;
 
-    unlisten = await listen("setup:progress", (e) => {
+    unlisten = await listen<SetupProgress>(EVENT_SETUP_PROGRESS, (e) => {
       progress = e.payload;
     });
 
     try {
-      await invoke("download_demucs");
+      await downloadDemucs();
       onReady();
     } catch (e) {
       error = String(e);

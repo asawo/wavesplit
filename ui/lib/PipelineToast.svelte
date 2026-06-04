@@ -1,13 +1,23 @@
-<script>
-  import { stageLabel, nextStage } from "./tracklist.helpers.js";
+<script lang="ts">
+  import { stageLabel, nextStage } from "./tracklist.helpers";
 
-  let { title, stage, status, message, canCancel, onCancel, onDismiss } =
+  interface Props {
+    title: string;
+    stage: string;
+    status: string;
+    message: string;
+    canCancel: boolean;
+    onCancel: () => Promise<void>;
+    onDismiss: () => void;
+  }
+
+  let { title, stage, status, message, canCancel, onCancel, onDismiss }: Props =
     $props();
 
-  function toastLabel(stage, status, message) {
+  function toastLabel(stage: string, status: string, message: string): string {
     if (status === "error") return message ? `Error: ${message}` : "Failed";
     if (status === "done" && stage === "analysis") return "Done";
-    if (status === "done") return stageLabel(nextStage(stage));
+    if (status === "done") return stageLabel(nextStage(stage)!);
     return stageLabel(stage);
   }
 

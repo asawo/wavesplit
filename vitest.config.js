@@ -8,7 +8,7 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
-    environmentMatchGlobs: [['ui/**/*.svelte.test.js', 'happy-dom']],
-    include: ['ui/**/*.test.js'],
+    environmentMatchGlobs: [['ui/**/*.svelte.test.ts', 'happy-dom']],
+    include: ['ui/**/*.test.ts'],
   },
 })

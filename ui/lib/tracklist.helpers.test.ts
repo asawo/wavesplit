@@ -9,19 +9,28 @@ import {
   progressPct,
   statusLabel,
   STAGE_PROGRESS,
-} from "./tracklist.helpers.js";
+} from "./tracklist.helpers";
+import type { Track, ProgressMap } from "./types";
 
-const track = (overrides = {}) => ({
-  id: "abc",
-  title: "My Track",
-  artist: null,
-  sort_order: 1,
-  status_download: "done",
-  status_stems: "done",
-  status_analysis: "done",
-  error_message: null,
-  ...overrides,
-});
+function track(overrides: Partial<Track> = {}): Track {
+  return {
+    id: "abc",
+    title: "My Track",
+    artist: null,
+    sort_order: 1,
+    status_download: "done",
+    status_stems: "done",
+    status_analysis: "done",
+    error_message: null,
+    export_path: null,
+    duration_ms: null,
+    source_type: "local",
+    source_url: null,
+    source_path: null,
+    created_at: "",
+    ...overrides,
+  };
+}
 
 describe("fuzzy", () => {
   it("matches exact string", () => {
@@ -119,7 +128,9 @@ describe("hasError", () => {
       status_stems: "pending",
       status_analysis: "pending",
     });
-    const progress = { abc: { status: "error", stage: "download" } };
+    const progress: ProgressMap = {
+      abc: { status: "error", stage: "download" },
+    };
     expect(hasError(t, progress)).toBe(true);
   });
 
@@ -129,7 +140,9 @@ describe("hasError", () => {
       status_stems: "pending",
       status_analysis: "pending",
     });
-    const progress = { abc: { status: "started", stage: "download" } };
+    const progress: ProgressMap = {
+      abc: { status: "started", stage: "download" },
+    };
     expect(hasError(t, progress)).toBe(false);
   });
 });
@@ -154,7 +167,9 @@ describe("progressPct", () => {
       status_stems: "pending",
       status_download: "pending",
     });
-    const progress = { abc: { stage: "stems", status: "started" } };
+    const progress: ProgressMap = {
+      abc: { stage: "stems", status: "started" },
+    };
     expect(progressPct(t, progress)).toBe(STAGE_PROGRESS.stems);
   });
 
@@ -164,7 +179,9 @@ describe("progressPct", () => {
       status_stems: "pending",
       status_download: "pending",
     });
-    const progress = { abc: { stage: "download", status: "done" } };
+    const progress: ProgressMap = {
+      abc: { stage: "download", status: "done" },
+    };
     expect(progressPct(t, progress)).toBe(STAGE_PROGRESS.download + 15);
   });
 });
@@ -216,7 +233,9 @@ describe("statusLabel", () => {
       status_stems: "pending",
       status_analysis: "pending",
     });
-    const progress = { abc: { stage: "download", status: "started" } };
+    const progress: ProgressMap = {
+      abc: { stage: "download", status: "started" },
+    };
     expect(statusLabel(t, progress)).toBe("Downloading…");
   });
 
@@ -226,7 +245,9 @@ describe("statusLabel", () => {
       status_stems: "pending",
       status_analysis: "pending",
     });
-    const progress = { abc: { stage: "download", status: "done" } };
+    const progress: ProgressMap = {
+      abc: { stage: "download", status: "done" },
+    };
     expect(statusLabel(t, progress)).toBe("Separating stems…");
   });
 
@@ -236,7 +257,7 @@ describe("statusLabel", () => {
       status_stems: "pending",
       status_analysis: "pending",
     });
-    const progress = {
+    const progress: ProgressMap = {
       abc: { stage: "stems", status: "error", message: "demucs OOM" },
     };
     expect(statusLabel(t, progress)).toBe("Error: demucs OOM");
