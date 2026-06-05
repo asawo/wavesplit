@@ -207,7 +207,9 @@
     if (track.id === PENDING_ID) return "ADDING";
     if (hasError(track, progress)) return "ERROR";
     if (isReady(track)) return "READY";
-    return statusLabel(track, progress).replace(/…$/, "").toUpperCase();
+    const raw = statusLabel(track, progress);
+    if (raw.startsWith("Separating")) return "DEMIXING";
+    return raw.replace(/…$/, "").toUpperCase();
   }
 </script>
 
@@ -659,24 +661,28 @@
     flex-direction: column;
     flex: 1;
     min-height: 0;
-    background: var(--bg-track);
-    border: 1px solid var(--border);
-    border-radius: 8px;
+    background: var(--bg);
+    border: 0;
+    border-top: 1px solid var(--border);
+    border-radius: 0;
     overflow: hidden;
+    margin-inline: -24px;
+    margin-bottom: -20px;
   }
 
   .tracks-header {
     display: grid;
-    grid-template-columns: minmax(0, 400px) minmax(0, 240px) 1fr 160px 200px;
+    grid-template-columns: minmax(0, 400px) minmax(0, 240px) 1fr 120px 200px;
     column-gap: 16px;
     align-items: center;
     padding: 10px 12px;
     border-bottom: 1px solid var(--border);
-    background: rgba(0, 0, 0, 0.25);
+    background: #1c1c1c;
     flex-shrink: 0;
   }
 
   .col-label {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
     font-size: 9px;
     font-weight: 600;
     letter-spacing: 0.1em;
@@ -728,7 +734,7 @@
 
   .track {
     display: grid;
-    grid-template-columns: minmax(0, 400px) minmax(0, 240px) 1fr 160px 200px;
+    grid-template-columns: minmax(0, 400px) minmax(0, 240px) 1fr 120px 200px;
     align-items: center;
     min-height: 42px;
     padding: 7px 12px;
@@ -769,7 +775,7 @@
     width: fit-content;
     min-width: 40px;
     max-width: 100%;
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 500;
     white-space: nowrap;
     overflow: hidden;
@@ -801,12 +807,12 @@
   }
 
   .title-input {
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 500;
   }
 
   .artist-input {
-    font-size: 12px;
+    font-size: 13px;
   }
 
   .track-status {

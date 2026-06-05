@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { onMount } from "svelte";
+  import { getVersion } from "@tauri-apps/api/app";
+
   interface NavItem {
     id: string;
     label: string;
@@ -13,11 +16,24 @@
   let { activeId, onSelect, onImport }: Props = $props();
 
   const items: NavItem[] = [{ id: "library", label: "Library" }];
+
+  let version = $state("");
+
+  onMount(async () => {
+    try {
+      version = await getVersion();
+    } catch {
+      version = "";
+    }
+  });
 </script>
 
 <aside class="sidebar">
   <div class="brand">
     <h1>Wavesplit</h1>
+    {#if version}
+      <span class="version">v{version}</span>
+    {/if}
   </div>
   <nav>
     {#each items as item (item.id)}
@@ -74,10 +90,21 @@
 
   .brand {
     display: flex;
-    align-items: center;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
     min-height: 42px;
     padding: 0 20px;
     margin-bottom: 24px;
+  }
+
+  .version {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 10px;
+    font-weight: 500;
+    color: var(--fg-muted);
+    letter-spacing: 0.04em;
+    margin-top: 2px;
   }
 
   h1 {
@@ -106,7 +133,7 @@
     border: none;
     border-left: 3px solid transparent;
     color: var(--fg);
-    font-size: 14px;
+    font-size: 13px;
     font-family: inherit;
     text-align: left;
     cursor: pointer;

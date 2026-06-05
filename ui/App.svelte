@@ -206,7 +206,7 @@
 
   :global(:root) {
     --bg: #0a0a0a;
-    --bg-sidebar: #000;
+    --bg-sidebar: #121212;
     --bg-panel: #161616;
     --bg-input: #1f1f1f;
     --bg-button: #1f1f1f;
