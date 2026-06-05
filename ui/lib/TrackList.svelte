@@ -637,7 +637,7 @@
   }
 
   .library-header {
-    margin: 0 0 12px;
+    margin: 0 0 20px;
     flex-shrink: 0;
   }
 
