@@ -333,8 +333,6 @@
     flex-direction: column;
     flex: 1;
     overflow: hidden;
-    padding: 12px 24px 20px;
-    gap: 20px;
   }
 
   .overlay {

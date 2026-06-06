@@ -565,9 +565,7 @@
     display: flex;
     gap: 12px;
     align-items: center;
-    margin-inline: -24px;
-    padding: 0 24px 12px;
-    margin-bottom: 12px;
+    padding: 12px 24px;
     border-bottom: 1px solid var(--border);
     flex-shrink: 0;
   }
@@ -646,7 +644,7 @@
   }
 
   .library-header {
-    margin: 0 0 20px;
+    padding: 12px 24px 20px;
     flex-shrink: 0;
   }
 
@@ -673,8 +671,6 @@
     border-top: 1px solid var(--border);
     border-radius: 0;
     overflow: hidden;
-    margin-inline: -24px;
-    margin-bottom: -20px;
   }
 
   .tracks-header {

@@ -38,16 +38,19 @@
       : "",
   );
 
-  function submitYoutube(): void {
+  async function submitYoutube(): Promise<void> {
     if (!url.trim() || !isValidYoutubeUrl(url)) return;
     const pendingUrl = normalizeUrl(url);
     url = "";
     onStarted(pendingUrl);
     onClose();
-    // Fire-and-forget — the pipeline toast handles progress and errors
-    addTrackYoutube(pendingUrl)
-      .then((result) => onAdded(result.id))
-      .catch(() => onAdded(null));
+    // Modal is closed; the pipeline toast surfaces progress and errors.
+    try {
+      const result = await addTrackYoutube(pendingUrl);
+      await onAdded(result.id);
+    } catch {
+      await onAdded(null);
+    }
   }
 
   async function chooseFile(): Promise<void> {
