@@ -11,6 +11,7 @@
     statusLabel,
     progressPct,
   } from "./tracklist.helpers";
+  import { formatTime } from "./playback.helpers";
   import {
     listTracks,
     exportStems as exportStemsCmd,
@@ -283,8 +284,9 @@
 
   <div class="tracks-table">
     <div class="tracks-header">
-      <span class="col-label">Track title</span>
+      <span class="col-label">Track</span>
       <span class="col-label">Artist</span>
+      <span class="col-label length-label">Duration</span>
       <span></span>
       <span class="col-label status-label">Status</span>
       <span class="col-label actions-label">Actions</span>
@@ -401,6 +403,11 @@
               >
                 {track.artist ?? "—"}
               </span>
+            {/if}
+          </div>
+          <div class="track-length">
+            {#if track.id !== PENDING_ID && track.duration_ms}
+              {formatTime(track.duration_ms / 1000)}
             {/if}
           </div>
           <div class="track-status">
@@ -672,7 +679,9 @@
 
   .tracks-header {
     display: grid;
-    grid-template-columns: minmax(0, 400px) minmax(0, 240px) 1fr 120px 200px;
+    grid-template-columns:
+      minmax(0, 400px) minmax(0, 240px)
+      50px 1fr 120px 200px;
     column-gap: 16px;
     align-items: center;
     padding: 10px 12px;
@@ -691,8 +700,13 @@
   }
 
   .actions-label {
-    grid-column: 5;
+    grid-column: 6;
     justify-self: end;
+  }
+
+  .length-label {
+    grid-column: 3;
+    text-align: right;
   }
 
   .tracks-scroll {
@@ -734,7 +748,9 @@
 
   .track {
     display: grid;
-    grid-template-columns: minmax(0, 400px) minmax(0, 240px) 1fr 120px 200px;
+    grid-template-columns:
+      minmax(0, 400px) minmax(0, 240px)
+      50px 1fr 120px 200px;
     align-items: center;
     min-height: 42px;
     padding: 7px 12px;
@@ -816,7 +832,7 @@
   }
 
   .track-status {
-    grid-column: 4;
+    grid-column: 5;
     display: flex;
     align-items: center;
     gap: 8px;
@@ -861,13 +877,21 @@
     color: var(--fg-muted);
   }
 
+  .track-length {
+    grid-column: 3;
+    font-size: 12px;
+    color: var(--fg-muted);
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+  }
+
   .track-actions {
     display: flex;
     align-items: center;
     justify-content: flex-end;
     gap: 10px;
     justify-self: end;
-    grid-column: 5;
+    grid-column: 6;
   }
 
   .retry-btn {

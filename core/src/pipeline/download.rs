@@ -106,3 +106,41 @@ pub fn local_title(src: &Path) -> String {
         .unwrap_or("unknown")
         .to_string()
 }
+
+/// Probe the duration of a media file in milliseconds via ffprobe.
+///
+/// Returns `Ok(None)` when ffprobe ran but the file has no parseable duration
+/// (e.g. format=duration was "N/A"). Returns `Err` for execution failures
+/// — callers should treat this as a non-fatal best-effort and continue.
+pub fn probe_duration_ms(src: &Path) -> Result<Option<i64>, String> {
+    let output = Command::new(bins::resolve("ffprobe"))
+        .args([
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "default=noprint_wrappers=1:nokey=1",
+            src.to_str().ok_or("invalid src path")?,
+        ])
+        .output()
+        .map_err(|e| format!("ffprobe not found or failed to start: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("ffprobe failed: {stderr}"));
+    }
+
+    let raw = String::from_utf8_lossy(&output.stdout);
+    let trimmed = raw.trim();
+    if trimmed.is_empty() || trimmed.eq_ignore_ascii_case("N/A") {
+        return Ok(None);
+    }
+    let seconds: f64 = trimmed
+        .parse()
+        .map_err(|e| format!("ffprobe returned unparseable duration {trimmed:?}: {e}"))?;
+    if !seconds.is_finite() || seconds < 0.0 {
+        return Ok(None);
+    }
+    Ok(Some((seconds * 1000.0).round() as i64))
+}

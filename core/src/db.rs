@@ -86,6 +86,14 @@ pub fn set_export_path(conn: &Connection, id: &str, path: &str) -> Result<()> {
     Ok(())
 }
 
+pub fn set_duration_ms(conn: &Connection, id: &str, duration_ms: i64) -> Result<()> {
+    conn.execute(
+        "UPDATE tracks SET duration_ms = ?1 WHERE id = ?2",
+        params![duration_ms, id],
+    )?;
+    Ok(())
+}
+
 pub fn update_track_meta(
     conn: &Connection,
     id: &str,
@@ -427,6 +435,15 @@ mod tests {
         set_export_path(&conn, "t11", "/exports/t11").unwrap();
         let track = get_track(&conn, "t11").unwrap().unwrap();
         assert_eq!(track.export_path.as_deref(), Some("/exports/t11"));
+    }
+
+    #[test]
+    fn set_duration_ms_stores_duration() {
+        let conn = open_mem();
+        insert_track(&conn, &sample_track("t12")).unwrap();
+        set_duration_ms(&conn, "t12", 123_456).unwrap();
+        let track = get_track(&conn, "t12").unwrap().unwrap();
+        assert_eq!(track.duration_ms, Some(123_456));
     }
 
     #[test]
