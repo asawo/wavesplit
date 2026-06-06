@@ -105,6 +105,11 @@ fn remove_quarantine(dest: &Path) -> Result<(), String> {
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
+        // A freshly-extracted binary may not carry the quarantine attribute.
+        // xattr exits non-zero with "No such xattr" — treat that as a no-op success.
+        if stderr.contains("No such xattr") {
+            return Ok(());
+        }
         return Err(format!("xattr failed: {stderr}"));
     }
 
@@ -230,5 +235,30 @@ mod tests {
 
         let result = remove_quarantine(Path::new("/nonexistent/path/demucs"));
         assert!(result.is_err(), "expected Err when xattr fails, got Ok");
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn remove_quarantine_succeeds_when_attribute_missing() {
+        use super::remove_quarantine;
+
+        // A real file without the quarantine attribute — what we get after
+        // bsdtar-extracting a tarball locally. xattr -d exits non-zero with
+        // "No such xattr", which we should treat as success.
+        let tmp = std::env::temp_dir().join(format!(
+            "wavesplit_quarantine_test_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        std::fs::write(&tmp, b"placeholder").expect("write tmp file");
+        let result = remove_quarantine(&tmp);
+        let _ = std::fs::remove_file(&tmp);
+        assert!(
+            result.is_ok(),
+            "expected Ok when quarantine attr is missing, got {result:?}"
+        );
     }
 }
