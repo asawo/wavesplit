@@ -11,6 +11,7 @@
     statusLabel,
     progressPct,
   } from "./tracklist.helpers";
+  import { formatTime } from "./playback.helpers";
   import {
     listTracks,
     exportStems as exportStemsCmd,
@@ -78,6 +79,8 @@
   let editingId: string | null = $state(null);
   let editTitle = $state("");
   let editArtist = $state("");
+
+  let openMenuId: string | null = $state(null);
 
   function startEdit(track: Track): void {
     editingId = track.id;
@@ -193,10 +196,30 @@
   function isProcessing(track: Track): boolean {
     return !isReady(track) && !hasError(track, progress);
   }
+
+  function statusDotClass(track: Track): string {
+    if (track.id === PENDING_ID) return "pending";
+    if (hasError(track, progress)) return "error";
+    if (isReady(track)) return "ready";
+    return "processing";
+  }
+
+  function statusText(track: Track): string {
+    if (track.id === PENDING_ID) return "ADDING";
+    if (hasError(track, progress)) return "ERROR";
+    if (isReady(track)) return "READY";
+    const raw = statusLabel(track, progress);
+    if (raw.startsWith("Separating")) return "DEMIXING";
+    return raw.replace(/…$/, "").toUpperCase();
+  }
 </script>
 
 <svelte:window
   onkeydown={(e) => {
+    if (e.key === "Escape" && openMenuId) {
+      openMenuId = null;
+      return;
+    }
     if (
       e.key === "s" &&
       !e.metaKey &&
@@ -207,17 +230,44 @@
       filterInput?.focus();
     }
   }}
+  onclick={(e) => {
+    openMenuId = null;
+    if (
+      editingId &&
+      !(e.target as HTMLElement | null)?.closest?.(".edit-input")
+    ) {
+      (document.activeElement as HTMLElement | null)?.blur?.();
+    }
+  }}
 />
 
 <div class="track-list">
-  {#if tracks.length > 0}
-    <div class="toolbar">
+  <div class="toolbar">
+    <div class="search-wrap">
+      <svg
+        class="search-icon"
+        viewBox="0 0 24 24"
+        width="16"
+        height="16"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <circle cx="11" cy="11" r="8" />
+        <line x1="21" y1="21" x2="16.65" y2="16.65" />
+      </svg>
       <input
         class="filter-input"
-        placeholder="Search"
+        placeholder="Search track or artist…"
         bind:value={filterQuery}
         bind:this={filterInput}
       />
+    </div>
+    <div class="sort-wrap">
+      <span class="sort-label">Sort:</span>
       <select class="sort-select" bind:value={sortKey}>
         <option value={SortKey.Newest}>Newest</option>
         <option value={SortKey.Oldest}>Oldest</option>
@@ -225,188 +275,281 @@
         <option value={SortKey.Artist}>Artist</option>
       </select>
     </div>
-  {/if}
+  </div>
 
-  <div class="tracks-scroll">
-    {#if editError}
-      <p class="export-error">
-        {editError}
-        <button class="dismiss-error" onclick={() => (editError = "")}>×</button
+  <header class="library-header">
+    <h2>Music Library</h2>
+    <p>Manage and export your separated audio stems.</p>
+  </header>
+
+  <div class="tracks-table">
+    <div class="tracks-header">
+      <span class="col-label">Track</span>
+      <span class="col-label">Artist</span>
+      <span class="col-label length-label">Duration</span>
+      <span></span>
+      <span class="col-label status-label">Status</span>
+      <span class="col-label actions-label">Actions</span>
+    </div>
+    <div class="tracks-scroll">
+      {#if editError}
+        <p class="export-error">
+          {editError}
+          <button class="dismiss-error" onclick={() => (editError = "")}
+            >×</button
+          >
+        </p>
+      {/if}
+
+      {#if deleteError}
+        <p class="export-error">
+          {deleteError}
+          <button class="dismiss-error" onclick={() => (deleteError = "")}
+            >×</button
+          >
+        </p>
+      {/if}
+
+      {#if exportError}
+        <p class="export-error">
+          {exportError}
+          <button class="dismiss-error" onclick={() => (exportError = "")}
+            >×</button
+          >
+        </p>
+      {/if}
+
+      {#if retryError}
+        <p class="export-error">
+          {retryError}
+          <button class="dismiss-error" onclick={() => (retryError = "")}
+            >×</button
+          >
+        </p>
+      {/if}
+
+      {#if tracks.length === 0}
+        <p class="empty">
+          No tracks yet. Add a YouTube URL or open a local file.
+        </p>
+      {/if}
+
+      {#each displayTracks as track (track.id)}
+        <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+        <div
+          class="track"
+          class:ready={isReady(track)}
+          class:error={hasError(track, progress)}
+          class:pending={track.id === PENDING_ID}
+          class:playable={isReady(track)}
+          role={isReady(track) ? "button" : undefined}
+          tabindex={isReady(track) ? 0 : undefined}
+          onclick={() => {
+            if (isReady(track) && editingId !== track.id) onPlay(track);
+          }}
         >
-      </p>
-    {/if}
-
-    {#if deleteError}
-      <p class="export-error">
-        {deleteError}
-        <button class="dismiss-error" onclick={() => (deleteError = "")}
-          >×</button
-        >
-      </p>
-    {/if}
-
-    {#if exportError}
-      <p class="export-error">
-        {exportError}
-        <button class="dismiss-error" onclick={() => (exportError = "")}
-          >×</button
-        >
-      </p>
-    {/if}
-
-    {#if retryError}
-      <p class="export-error">
-        {retryError}
-        <button class="dismiss-error" onclick={() => (retryError = "")}
-          >×</button
-        >
-      </p>
-    {/if}
-
-    {#if tracks.length === 0}
-      <p class="empty">
-        No tracks yet. Add a YouTube URL or open a local file.
-      </p>
-    {/if}
-
-    {#each displayTracks as track (track.id)}
-      <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-      <div
-        class="track"
-        class:ready={isReady(track)}
-        class:error={hasError(track, progress)}
-        class:pending={track.id === PENDING_ID}
-        class:playable={isReady(track)}
-        role={isReady(track) ? "button" : undefined}
-        tabindex={isReady(track) ? 0 : undefined}
-        onclick={() => {
-          if (isReady(track) && editingId !== track.id) onPlay(track);
-        }}
-      >
-        <div class="track-info">
-          {#if track.id === PENDING_ID}
-            <span class="title">{track.title}</span>
-            <span class="status processing">Adding…</span>
-          {:else if editingId === track.id}
-            <input
-              class="edit-input title-input"
-              bind:value={editTitle}
-              onblur={() => commitEdit(track)}
-              onkeydown={(e) => onEditKeydown(e, track)}
-            />
-            <input
-              class="edit-input artist-input"
-              placeholder="Artist"
-              bind:value={editArtist}
-              onblur={() => commitEdit(track)}
-              onkeydown={(e) => onEditKeydown(e, track)}
-            />
-          {:else}
-            <span
-              class="title"
-              onclick={(e) => {
-                e.stopPropagation();
-                startEdit(track);
-              }}
-              onkeydown={(e) => {
-                e.stopPropagation();
-                e.key === "Enter" && startEdit(track);
-              }}
-              role="button"
-              tabindex="0"
-            >
-              {track.title}
-            </span>
-            <span
-              class="artist"
-              onclick={(e) => {
-                e.stopPropagation();
-                startEdit(track);
-              }}
-              onkeydown={(e) => {
-                e.stopPropagation();
-                e.key === "Enter" && startEdit(track);
-              }}
-              role="button"
-              tabindex="0"
-            >
-              {track.artist ?? "—"}
-            </span>
-          {/if}
-          {#if track.id !== PENDING_ID}
-            <span
-              class="status"
-              class:processing={isProcessing(track)}
-              class:ready={isReady(track)}
-            >
-              {statusLabel(track, progress)}
-            </span>
-            {#if isProcessing(track)}
-              <div class="progress-bar">
-                <div
-                  class="progress-fill"
-                  style="width: {progressPct(track, progress)}%"
-                ></div>
-              </div>
+          <div class="track-info">
+            {#if editingId === track.id}
+              <input
+                class="edit-input title-input"
+                bind:value={editTitle}
+                onblur={() => commitEdit(track)}
+                onkeydown={(e) => onEditKeydown(e, track)}
+              />
+            {:else}
+              <span
+                class="title"
+                onclick={(e) => {
+                  if (track.id === PENDING_ID) return;
+                  e.stopPropagation();
+                  startEdit(track);
+                }}
+                onkeydown={(e) => {
+                  if (track.id === PENDING_ID) return;
+                  e.stopPropagation();
+                  e.key === "Enter" && startEdit(track);
+                }}
+                role="button"
+                tabindex="0"
+              >
+                {track.title}
+              </span>
             {/if}
-          {/if}
-        </div>
-        <div class="track-actions">
-          {#if track.id === PENDING_ID}
-            <span class="spinner" aria-label="Adding track"></span>
-          {:else}
-            {#if isReady(track)}
-              {#if track.export_path}
+          </div>
+          <div class="track-artist">
+            {#if track.id === PENDING_ID}
+              <!-- empty cell -->
+            {:else if editingId === track.id}
+              <input
+                class="edit-input artist-input"
+                placeholder="Artist"
+                bind:value={editArtist}
+                onblur={() => commitEdit(track)}
+                onkeydown={(e) => onEditKeydown(e, track)}
+              />
+            {:else}
+              <span
+                class="artist"
+                onclick={(e) => {
+                  e.stopPropagation();
+                  startEdit(track);
+                }}
+                onkeydown={(e) => {
+                  e.stopPropagation();
+                  e.key === "Enter" && startEdit(track);
+                }}
+                role="button"
+                tabindex="0"
+              >
+                {track.artist ?? "—"}
+              </span>
+            {/if}
+          </div>
+          <div class="track-length">
+            {#if track.id !== PENDING_ID && track.duration_ms}
+              {formatTime(track.duration_ms / 1000)}
+            {/if}
+          </div>
+          <div class="track-status">
+            <span class="status-dot {statusDotClass(track)}"></span>
+            <span class="status-text">{statusText(track)}</span>
+          </div>
+          <div class="track-actions">
+            {#if track.id !== PENDING_ID}
+              {#if isReady(track)}
+                {#if track.export_path}
+                  <button
+                    class="btn open-btn"
+                    onclick={(e) => {
+                      e.stopPropagation();
+                      openFolder(track.export_path!);
+                    }}
+                    title={track.export_path!}
+                    disabled={exportingId === track.id ||
+                      deletingId === track.id}
+                  >
+                    <svg
+                      viewBox="0 0 24 24"
+                      width="14"
+                      height="14"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      aria-hidden="true"
+                    >
+                      <path
+                        d="M4 4h5l2 3h9a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z"
+                      />
+                    </svg>
+                    Open
+                  </button>
+                {/if}
                 <button
-                  class="open-btn"
+                  class="btn export-btn"
                   onclick={(e) => {
                     e.stopPropagation();
-                    openFolder(track.export_path!);
+                    exportStems(track);
                   }}
-                  title={track.export_path!}
                   disabled={exportingId === track.id || deletingId === track.id}
                 >
-                  Open folder
+                  <svg
+                    viewBox="0 0 24 24"
+                    width="14"
+                    height="14"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="7 10 12 15 17 10" />
+                    <line x1="12" y1="15" x2="12" y2="3" />
+                  </svg>
+                  {exportingId === track.id ? "Exporting…" : "Export"}
                 </button>
               {/if}
-              <button
-                class="export-btn"
-                onclick={(e) => {
-                  e.stopPropagation();
-                  exportStems(track);
-                }}
-                disabled={exportingId === track.id || deletingId === track.id}
-              >
-                {exportingId === track.id ? "Exporting…" : "↓ Export stems"}
-              </button>
+              {#if hasError(track, progress)}
+                <button
+                  class="retry-btn"
+                  onclick={(e) => {
+                    e.stopPropagation();
+                    retryTrack(track);
+                  }}
+                  disabled={retryingId === track.id}
+                >
+                  {retryingId === track.id ? "Retrying…" : "↺ Retry"}
+                </button>
+              {/if}
+              <div class="track-menu">
+                <button
+                  class="menu-trigger"
+                  onclick={(e) => {
+                    e.stopPropagation();
+                    openMenuId = openMenuId === track.id ? null : track.id;
+                  }}
+                  disabled={exportingId === track.id ||
+                    deletingId === track.id ||
+                    retryingId === track.id}
+                  aria-haspopup="menu"
+                  aria-expanded={openMenuId === track.id}
+                  aria-label="Track actions"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    width="16"
+                    height="16"
+                    fill="currentColor"
+                    aria-hidden="true"
+                  >
+                    <circle cx="12" cy="5" r="1.6" />
+                    <circle cx="12" cy="12" r="1.6" />
+                    <circle cx="12" cy="19" r="1.6" />
+                  </svg>
+                </button>
+                {#if openMenuId === track.id}
+                  <div class="menu-dropdown" role="menu">
+                    <button
+                      class="menu-item destructive"
+                      role="menuitem"
+                      onclick={(e) => {
+                        e.stopPropagation();
+                        openMenuId = null;
+                        deleteTrack(track);
+                      }}
+                    >
+                      <svg
+                        viewBox="0 0 24 24"
+                        width="14"
+                        height="14"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        aria-hidden="true"
+                      >
+                        <polyline points="3 6 5 6 21 6" />
+                        <path
+                          d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"
+                        />
+                        <path d="M10 11v6" />
+                        <path d="M14 11v6" />
+                        <path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2" />
+                      </svg>
+                      Delete track
+                    </button>
+                  </div>
+                {/if}
+              </div>
             {/if}
-            {#if hasError(track, progress)}
-              <button
-                class="retry-btn"
-                onclick={(e) => {
-                  e.stopPropagation();
-                  retryTrack(track);
-                }}
-                disabled={retryingId === track.id}
-              >
-                {retryingId === track.id ? "Retrying…" : "↺ Retry"}
-              </button>
-            {/if}
-            <button
-              class="delete-btn"
-              onclick={(e) => {
-                e.stopPropagation();
-                deleteTrack(track);
-              }}
-              disabled={exportingId === track.id ||
-                deletingId === track.id ||
-                retryingId === track.id}
-              title="Delete track">✕</button
-            >
-          {/if}
+          </div>
         </div>
-      </div>
-    {/each}
+      {/each}
+    </div>
   </div>
 </div>
 
@@ -420,9 +563,149 @@
 
   .toolbar {
     display: flex;
-    gap: 6px;
-    margin-bottom: 8px;
+    gap: 12px;
+    align-items: center;
+    padding: 12px 24px;
+    border-bottom: 1px solid var(--border);
     flex-shrink: 0;
+  }
+
+  .search-wrap {
+    position: relative;
+    flex: 1;
+    max-width: 480px;
+  }
+
+  .search-icon {
+    position: absolute;
+    left: 16px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--fg);
+    pointer-events: none;
+  }
+
+  .filter-input {
+    width: 100%;
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    color: var(--fg);
+    padding: 10px 18px 10px 40px;
+    font-size: 13px;
+    outline: none;
+  }
+
+  .filter-input:focus {
+    border-color: var(--color-ready);
+  }
+
+  .filter-input::placeholder {
+    color: var(--fg-muted);
+  }
+
+  .sort-wrap {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    flex-shrink: 0;
+    margin-left: auto;
+  }
+
+  .sort-label {
+    color: var(--fg-muted);
+    font-size: 13px;
+  }
+
+  .sort-select {
+    appearance: none;
+    -webkit-appearance: none;
+    background: transparent;
+    border: none;
+    color: var(--color-ready);
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    outline: none;
+    cursor: pointer;
+    padding-right: 16px;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%234caf72' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
+    background-repeat: no-repeat;
+    background-position: right 0 center;
+  }
+
+  .sort-select option {
+    background: var(--bg-panel);
+    color: var(--fg);
+  }
+
+  .library-header {
+    padding: 12px 24px 20px;
+    flex-shrink: 0;
+  }
+
+  .library-header h2 {
+    margin: 0 0 4px;
+    font-size: 22px;
+    font-weight: 600;
+    color: var(--fg);
+  }
+
+  .library-header p {
+    margin: 0;
+    font-size: 13px;
+    color: var(--fg-muted);
+  }
+
+  .tracks-table {
+    /* Shared grid template for the header row and each track row.
+       Keep .tracks-header and .track aligned by referencing this var. */
+    --track-grid-columns: minmax(0, 400px) minmax(0, 240px) 50px 1fr 120px 200px;
+    --track-grid-gap: 16px;
+
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    background: var(--bg);
+    border: 0;
+    border-top: 1px solid var(--border);
+    border-radius: 0;
+    overflow: hidden;
+  }
+
+  .tracks-header {
+    display: grid;
+    grid-template-columns: var(--track-grid-columns);
+    column-gap: var(--track-grid-gap);
+    align-items: center;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    background: #1c1c1c;
+    flex-shrink: 0;
+  }
+
+  .col-label {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--fg-muted);
+  }
+
+  .actions-label {
+    grid-column: 6;
+    justify-self: end;
+  }
+
+  .length-label {
+    grid-column: 3;
+    text-align: left;
   }
 
   .tracks-scroll {
@@ -431,42 +714,6 @@
     min-height: 0;
     display: flex;
     flex-direction: column;
-    gap: 2px;
-  }
-
-  .filter-input {
-    flex: 1;
-    background: var(--bg-input);
-    border: 1px solid var(--border);
-    border-radius: 5px;
-    color: var(--fg);
-    padding: 6px 10px;
-    font-size: 13px;
-    outline: none;
-  }
-
-  .filter-input:focus {
-    border-color: var(--accent);
-  }
-
-  .filter-input::placeholder {
-    color: var(--fg-muted);
-  }
-
-  .sort-select {
-    background: var(--bg-input);
-    border: 1px solid var(--border);
-    border-radius: 5px;
-    color: var(--fg);
-    padding: 6px 8px;
-    font-size: 13px;
-    outline: none;
-    cursor: pointer;
-    flex-shrink: 0;
-  }
-
-  .sort-select:focus {
-    border-color: var(--accent);
   }
 
   .export-error {
@@ -499,13 +746,18 @@
   }
 
   .track {
-    display: flex;
+    display: grid;
+    grid-template-columns: var(--track-grid-columns);
+    column-gap: var(--track-grid-gap);
     align-items: center;
-    justify-content: space-between;
-    padding: 10px 12px;
-    border-radius: 6px;
-    background: var(--bg-track);
-    gap: 12px;
+    min-height: 42px;
+    padding: 7px 12px;
+    border-bottom: 1px solid var(--border);
+    background: transparent;
+  }
+
+  .track:last-child {
+    border-bottom: none;
   }
 
   .track.error {
@@ -527,8 +779,16 @@
     min-width: 0;
   }
 
+  .track-artist {
+    min-width: 0;
+  }
+
   .title {
-    font-size: 14px;
+    align-self: flex-start;
+    width: fit-content;
+    min-width: 40px;
+    max-width: 100%;
+    font-size: 13px;
     font-weight: 500;
     white-space: nowrap;
     overflow: hidden;
@@ -537,7 +797,11 @@
   }
 
   .artist {
-    font-size: 12px;
+    display: block;
+    width: fit-content;
+    min-width: 40px;
+    max-width: 100%;
+    font-size: 13px;
     color: var(--fg-muted);
     white-space: nowrap;
     overflow: hidden;
@@ -556,49 +820,75 @@
   }
 
   .title-input {
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 500;
   }
 
   .artist-input {
-    font-size: 12px;
+    font-size: 13px;
   }
 
-  .status {
-    font-size: 11px;
+  .track-status {
+    grid-column: 5;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+
+  .status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .status-dot.ready {
+    background: var(--color-ready);
+  }
+
+  .status-dot.error {
+    background: var(--color-error);
+  }
+
+  .status-dot.processing,
+  .status-dot.pending {
+    background: #f5c518;
+    animation: status-pulse 1.4s ease-in-out infinite;
+  }
+
+  @keyframes status-pulse {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.35;
+    }
+  }
+
+  .status-text {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
     color: var(--fg-muted);
   }
 
-  .status.ready {
-    color: var(--color-ready);
-  }
-
-  .status.processing {
-    color: var(--color-processing);
-  }
-
-  .progress-bar {
-    height: 3px;
-    background: var(--border);
-    border-radius: 2px;
-    overflow: hidden;
-    margin-top: 5px;
-    width: 100%;
-    max-width: 240px;
-  }
-
-  .progress-fill {
-    height: 100%;
-    background: var(--color-processing);
-    border-radius: 2px;
-    transition: width 0.4s ease;
+  .track-length {
+    grid-column: 3;
+    font-size: 12px;
+    color: var(--fg-muted);
+    font-variant-numeric: tabular-nums;
+    text-align: left;
   }
 
   .track-actions {
     display: flex;
     align-items: center;
-    gap: 6px;
-    flex-shrink: 0;
+    justify-content: flex-end;
+    gap: 10px;
+    justify-self: end;
+    grid-column: 6;
   }
 
   .retry-btn {
@@ -622,40 +912,77 @@
     cursor: default;
   }
 
-  .delete-btn {
-    padding: 4px 8px;
+  .track-menu {
+    position: relative;
+    display: inline-flex;
+  }
+
+  .menu-trigger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px;
     border: none;
     border-radius: 4px;
     background: transparent;
     color: var(--fg-muted);
-    font-size: 13px;
     cursor: pointer;
-    line-height: 1;
+    line-height: 0;
   }
 
-  .delete-btn:hover {
+  .menu-trigger:hover:not(:disabled) {
+    color: var(--fg);
+    background: var(--bg-button-hover);
+  }
+
+  .menu-trigger:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+
+  .menu-dropdown {
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 0;
+    z-index: 10;
+    min-width: 160px;
+    padding: 4px;
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  }
+
+  .menu-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 7px 10px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--fg);
+    font-family: inherit;
+    font-size: 13px;
+    text-align: left;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .menu-item:hover {
+    background: var(--bg-button-hover);
+  }
+
+  .menu-item.destructive {
     color: var(--color-error);
+  }
+
+  .menu-item.destructive:hover {
     background: var(--bg-track-error);
   }
 
   .track.pending {
     opacity: 0.7;
-  }
-
-  .spinner {
-    display: inline-block;
-    width: 14px;
-    height: 14px;
-    border: 2px solid var(--border);
-    border-top-color: var(--color-processing);
-    border-radius: 50%;
-    animation: spin 0.7s linear infinite;
-    flex-shrink: 0;
-  }
-
-  @keyframes spin {
-    to {
-      transform: rotate(360deg);
-    }
   }
 </style>

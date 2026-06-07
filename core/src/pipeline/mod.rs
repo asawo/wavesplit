@@ -151,6 +151,30 @@ pub async fn run<R: Runtime>(
                 return;
             }
         }
+
+        // Best-effort: probe duration so the UI can show track length.
+        // Don't fail the pipeline if ffprobe is missing or the file can't be parsed.
+        let probe = {
+            let source_wav = source_wav.clone();
+            tokio::task::spawn_blocking(move || download::probe_duration_ms(&source_wav)).await
+        };
+        match probe {
+            Ok(Ok(Some(ms))) => {
+                let conn = lock_or_abort!(&db, &app, &track_id, "download");
+                if let Err(e) = db::set_duration_ms(&conn, &track_id, ms) {
+                    warn!(%track_id, error = %e, "failed to persist duration_ms");
+                }
+            }
+            Ok(Ok(None)) => {
+                info!(%track_id, "ffprobe returned no duration");
+            }
+            Ok(Err(e)) => {
+                warn!(%track_id, error = %e, "ffprobe duration probe failed");
+            }
+            Err(e) => {
+                warn!(%track_id, error = %e, "ffprobe probe task panicked");
+            }
+        }
     }
 
     // --- Stage 2: stems ---

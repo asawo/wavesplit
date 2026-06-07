@@ -467,7 +467,23 @@
 <div class="playback">
   <!-- ── Header ── -->
   <header class="playback-header">
-    <button class="back-btn" onclick={onBack}>‹ Library</button>
+    <button class="back-btn" onclick={onBack}>
+      <svg
+        viewBox="0 0 24 24"
+        width="14"
+        height="14"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <line x1="19" y1="12" x2="5" y2="12" />
+        <polyline points="12 19 5 12 12 5" />
+      </svg>
+      Back to Library
+    </button>
     <div class="track-meta">
       <span class="track-title">{track.title}</span>
       {#if track.artist}<span class="track-artist">{track.artist}</span>{/if}
@@ -698,16 +714,50 @@
     {/if}
     {#if track.export_path}
       <button
-        class="open-btn"
+        class="btn open-btn"
         onclick={() => openFolder(track.export_path!)}
         title={track.export_path!}
         disabled={!!exportingId}
       >
-        Open folder
+        <svg
+          viewBox="0 0 24 24"
+          width="14"
+          height="14"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <path
+            d="M4 4h5l2 3h9a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z"
+          />
+        </svg>
+        Open
       </button>
     {/if}
-    <button class="export-btn" onclick={exportStems} disabled={!!exportingId}>
-      {exportingId ? "Exporting…" : "↓ Export stems"}
+    <button
+      class="btn export-btn"
+      onclick={exportStems}
+      disabled={!!exportingId}
+    >
+      <svg
+        viewBox="0 0 24 24"
+        width="14"
+        height="14"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+        <polyline points="7 10 12 15 17 10" />
+        <line x1="12" y1="15" x2="12" y2="3" />
+      </svg>
+      {exportingId ? "Exporting…" : "Export"}
     </button>
   </div>
 </div>
@@ -734,19 +784,23 @@
 
   .back-btn {
     justify-self: start;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
     background: transparent;
-    border: 1px solid var(--border);
-    border-radius: 4px;
+    border: none;
     color: var(--fg);
+    font-family: inherit;
     font-size: 13px;
-    padding: 5px 14px;
+    font-weight: 500;
+    padding: 4px 6px;
+    border-radius: 6px;
     cursor: pointer;
     white-space: nowrap;
   }
 
   .back-btn:hover {
     background: var(--bg-button-hover);
-    border-color: var(--fg-muted);
   }
 
   .track-meta {
@@ -1053,7 +1107,7 @@
     align-items: center;
     justify-content: flex-end;
     gap: 12px;
-    padding: 10px 16px;
+    padding: 12px 16px;
     border-top: 1px solid var(--border);
     flex-shrink: 0;
   }
