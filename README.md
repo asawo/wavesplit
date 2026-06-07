@@ -4,11 +4,22 @@ A desktop app for musicians to practice with isolated stems. Give it a YouTube U
 
 Built with Tauri (Rust + Svelte).
 
-<img width="894" alt="wavesplit screenshot (library screen)" src="https://github.com/user-attachments/assets/1db258ee-9cfd-4a82-aee4-e63c59664bd6" />
-
-<img width="894" height="712" alt="waveslplit screenshot (playback screen)" src="https://github.com/user-attachments/assets/a45aebfd-2f2d-4ca8-9cd0-a615fd06d8fa" />
-
----
+### UI
+<details>
+  <summary>Click to reveal app screenshots</summary>
+  
+  #### Music Library (Track list)
+  
+  <img width="800" alt="Screenshot 2026-06-05 at 21 04 29" src="https://github.com/user-attachments/assets/92913e94-daa0-4f59-96c6-9e0b728ee2e6" />
+  
+  #### Add Music
+  
+  <img width="800" alt="Screenshot 2026-06-04 at 15 06 34" src="https://github.com/user-attachments/assets/d43f6733-06ed-45bd-a2fb-3bcca1db7da4" />
+  
+  #### Playback screen
+  
+  <img width="800" alt="Screenshot 2026-06-04 at 14 01 31" src="https://github.com/user-attachments/assets/38edbb54-3170-44c3-9b23-fdc8e89c422a" />
+</details>
 
 ## Features
 
