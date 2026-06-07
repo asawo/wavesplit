@@ -662,6 +662,11 @@
   }
 
   .tracks-table {
+    /* Shared grid template for the header row and each track row.
+       Keep .tracks-header and .track aligned by referencing this var. */
+    --track-grid-columns: minmax(0, 400px) minmax(0, 240px) 50px 1fr 120px 200px;
+    --track-grid-gap: 16px;
+
     display: flex;
     flex-direction: column;
     flex: 1;
@@ -675,10 +680,8 @@
 
   .tracks-header {
     display: grid;
-    grid-template-columns:
-      minmax(0, 400px) minmax(0, 240px)
-      50px 1fr 120px 200px;
-    column-gap: 16px;
+    grid-template-columns: var(--track-grid-columns);
+    column-gap: var(--track-grid-gap);
     align-items: center;
     padding: 10px 12px;
     border-bottom: 1px solid var(--border);
@@ -702,7 +705,7 @@
 
   .length-label {
     grid-column: 3;
-    text-align: right;
+    text-align: left;
   }
 
   .tracks-scroll {
@@ -744,15 +747,13 @@
 
   .track {
     display: grid;
-    grid-template-columns:
-      minmax(0, 400px) minmax(0, 240px)
-      50px 1fr 120px 200px;
+    grid-template-columns: var(--track-grid-columns);
+    column-gap: var(--track-grid-gap);
     align-items: center;
     min-height: 42px;
     padding: 7px 12px;
     border-bottom: 1px solid var(--border);
     background: transparent;
-    column-gap: 16px;
   }
 
   .track:last-child {
@@ -878,7 +879,7 @@
     font-size: 12px;
     color: var(--fg-muted);
     font-variant-numeric: tabular-nums;
-    text-align: right;
+    text-align: left;
   }
 
   .track-actions {
