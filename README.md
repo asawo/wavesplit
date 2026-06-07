@@ -6,7 +6,7 @@ Built with Tauri (Rust + Svelte).
 
 ### UI
 <details>
-  <summary>Click to reveal app screenshots</summary>
+  <summary> 🔍 View app screenshots</summary>
   
   #### Music Library (Track list)
   
