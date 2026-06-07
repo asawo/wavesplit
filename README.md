@@ -1,6 +1,6 @@
 # Wavesplit
 
-A desktop app for musicians to practice with isolated stems. Give it a YouTube URL or a local audio file — it separates the audio into bass, drums, vocals, and other so you can play along, mute parts, or export them to a DAW.
+A desktop app for musicians to practice with isolated stems. Import a song from a YouTube URL or a local audio file to separates the audio into bass, drums, vocals, and other so you can play along, mute parts, or export them to a DAW.
 
 Built with Tauri (Rust + Svelte).
 
