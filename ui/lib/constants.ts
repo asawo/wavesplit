@@ -59,6 +59,3 @@ export const WAVEFORM_COLOR_MUTED = "#2e2e2e";
 export const GAIN_SMOOTHING_SEC = 0.015;
 export const SKIP_SECONDS = 10;
 export const DEFAULT_LOOP_SECONDS = 10;
-
-// Auto-dismiss the toast 2s after the pipeline reports "done"
-export const TOAST_DISMISS_MS = 2000;

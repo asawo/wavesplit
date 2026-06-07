@@ -1,8 +1,8 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
   import { getCurrentWebview } from "@tauri-apps/api/webview";
-  import { addTrackYoutube, addTrackLocal } from "./commands";
-  import { pickAndImportLocal } from "./importTrack";
+  import { addTrackYoutube } from "./commands";
+  import { pickAndImportLocal, importLocalPath } from "./importTrack";
 
   interface Props {
     onClose: () => void;
@@ -19,8 +19,6 @@
 
   const YOUTUBE_PATTERN =
     "https://(www\\.youtube\\.com|youtu\\.be|music\\.youtube\\.com)/.+";
-
-  const ACCEPTED_EXT = ["mp3", "wav", "flac", "m4a", "aac", "ogg"];
 
   function normalizeUrl(value: string): string {
     const trimmed = value.trim();
@@ -57,42 +55,35 @@
     loading = true;
     error = "";
     try {
-      let picked = false;
+      let started = false;
       await pickAndImportLocal({
         onStarted: (title) => {
-          picked = true;
+          started = true;
           onStarted(title);
         },
         onAdded,
         onError: (msg) => (error = msg),
       });
-      if (picked && !error) onClose();
+      if (started && !error) onClose();
     } finally {
       loading = false;
     }
   }
 
   async function importDroppedFile(path: string): Promise<void> {
-    const ext = path.split(".").pop()?.toLowerCase() ?? "";
-    if (!ACCEPTED_EXT.includes(ext)) {
-      error = `Unsupported file type: .${ext}`;
-      return;
-    }
     loading = true;
     error = "";
-    onStarted(path.replace(/\\/g, "/").split("/").pop() ?? "Local file");
     try {
-      const result = await addTrackLocal(path);
-      if (result.duplicate) {
-        error = "This track is already in your library";
-        await onAdded(result.id);
-      } else {
-        await onAdded(result.id);
-        onClose();
-      }
-    } catch (e) {
-      error = String(e);
-      await onAdded(null);
+      let started = false;
+      await importLocalPath(path, {
+        onStarted: (title) => {
+          started = true;
+          onStarted(title);
+        },
+        onAdded,
+        onError: (msg) => (error = msg),
+      });
+      if (started && !error) onClose();
     } finally {
       loading = false;
     }

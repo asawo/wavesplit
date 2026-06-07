@@ -63,11 +63,3 @@ export interface ProgressEntry {
 }
 
 export type ProgressMap = Record<string, ProgressEntry>;
-
-export interface ToastTrack {
-  id: string | null;
-  title: string;
-  stage: string;
-  status: string;
-  message: string;
-}
