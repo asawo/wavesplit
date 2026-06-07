@@ -12,14 +12,14 @@ Built with Tauri (Rust + Svelte).
 
 ## Features
 
-- Add tracks from a YouTube URL or a local audio file via [yt-dlp](https://github.com/yt-dlp/yt-dlp)
+- Add tracks from a YouTube URL, a local audio file, or by dragging a file onto the window — all via [yt-dlp](https://github.com/yt-dlp/yt-dlp)
 - Stem separation via [Demucs](https://github.com/facebookresearch/demucs) (bass, drums, vocals, other)
 - Full playback screen with synchronized 4-stem audio engine
 - Per-stem mute, solo, and volume control
 - Section loop with draggable start/end markers
 - Export stems + original audio to any folder
-- Library with search and sort (by newest, oldest, title, or artist)
-- Track metadata editing (title and artist)
+- Library table with search, sort (by newest, oldest, title, or artist), and per-row Status / Duration columns
+- Track metadata editing (title and artist) inline in the library
 
 ---
 
@@ -31,8 +31,10 @@ Wavesplit uses [Demucs](https://github.com/facebookresearch/demucs) to separate 
 
 ### 2. Add a track
 
+Click **+ Add Track** in the sidebar to open the import modal:
+
 - **YouTube:** paste a YouTube URL into the input field and press Enter or click **Add**
-- **Local file:** click **Open file** and select an audio file (MP3, WAV, FLAC, etc.)
+- **Local file:** click **Choose audio file** and select an audio file (MP3, WAV, FLAC, M4A, AAC, OGG), or drag the file onto the modal
 
 The track appears in the library immediately. Three pipeline stages run in sequence:
 
@@ -42,11 +44,11 @@ The track appears in the library immediately. Three pipeline stages run in seque
 | Stems | Demucs separates it into bass, drums, vocals, other |
 | Analysis | Finalizes the track |
 
-Progress is shown live in the track row. Stem separation typically takes 1–5 minutes depending on your machine.
+Progress is shown live in the **Status** column with a pulsing dot (yellow = in-progress, green = ready, red = error). Stem separation typically takes 1–5 minutes depending on your machine.
 
 ### 3. Play a track
 
-Once a track shows **Ready**, click anywhere on its row to open the playback screen.
+Once a track's Status shows **READY**, click anywhere on its row to open the playback screen. Use **Back to Library** (or click **Library** in the sidebar) to return.
 
 **Transport controls:**
 
@@ -74,11 +76,11 @@ Each stem row has three controls:
 
 ### 6. Edit track metadata
 
-In the library, click the track title or artist name to edit it inline. Press Enter or click away to save.
+In the library, click the track title or artist name to edit it inline. Press Enter or click outside the field to save, Escape to cancel.
 
 ### 7. Export stems
 
-Click **↓ Export stems** on any ready track (in the library or the playback screen) to copy the separated WAV files to a folder of your choice. The exported folder contains:
+Click **Export** on any ready track (in the library or the playback screen) to copy the separated WAV files to a folder of your choice. Once exported, an **Open** button appears next to **Export** for quickly revealing the exported folder. The exported folder contains:
 
 - `vocals.wav`
 - `drums.wav`
@@ -159,7 +161,7 @@ UI (Svelte / Tauri webview)
     → SQLite        (track metadata, bundled via rusqlite)
 ```
 
-Each pipeline stage (download → stems → analysis) updates the database and emits a `pipeline` event to the frontend for live progress display.
+Each pipeline stage (download → stems → analysis) updates the database and emits a `pipeline` event to the frontend, which `TrackList` consumes to drive the per-row Status column. The download stage additionally probes the source duration via `ffprobe` (best-effort — a missing or unparseable file won't fail the pipeline) so the Duration column can populate without waiting for full analysis.
 
 Track data is stored in:
 - `~/Library/Application Support/com.wavesplit.app/` (macOS)
