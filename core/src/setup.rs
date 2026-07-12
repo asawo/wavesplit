@@ -27,17 +27,29 @@ async fn fetch_expected_sha256(client: &reqwest::Client, asset: &str) -> Result<
         .text()
         .await
         .map_err(|e| format!("failed to read checksums.txt: {e}"))?;
+    find_checksum(&body, asset).ok_or_else(|| format!("asset '{asset}' not found in checksums.txt"))
+}
+
+/// Look up the SHA-256 hash for `asset` in a shasum-style checksums file.
+///
+/// Handles both output modes shasum tools emit:
+/// - text mode: `"{hash}  {filename}"` (two spaces) — coreutils on macOS/Linux
+/// - binary mode: `"{hash} *{filename}"` (one space + `*`) — Git-for-Windows'
+///   `sha256sum`, which is what our Windows CI runner produces
+///
+/// Splitting on the first whitespace run and stripping a leading `*` marker
+/// covers both, so a Windows sidecar entry is no longer missed.
+fn find_checksum(body: &str, asset: &str) -> Option<String> {
     for line in body.lines() {
-        // Standard shasum format: "{hash}  {filename}" (two spaces between hash and name).
-        // split_once("  ") consumes both spaces, so `filename` has no leading space.
-        // trim() handles any trailing whitespace or CRLF that survives .lines().
-        if let Some((hash, filename)) = line.split_once("  ") {
-            if filename.trim() == asset {
-                return Ok(hash.trim().to_string());
+        let line = line.trim();
+        if let Some((hash, rest)) = line.split_once(char::is_whitespace) {
+            let filename = rest.trim_start().trim_start_matches('*');
+            if filename == asset {
+                return Some(hash.trim().to_string());
             }
         }
     }
-    Err(format!("asset '{asset}' not found in checksums.txt"))
+    None
 }
 
 fn asset_name() -> &'static str {
@@ -212,6 +224,53 @@ pub async fn download(demucs_dir: &Path, app: &AppHandle) -> Result<(), String> 
 
 #[cfg(test)]
 mod tests {
+    use super::find_checksum;
+
+    // A checksums.txt exactly as produced by the sidecar CI: macOS/Linux lines
+    // are coreutils text mode (two spaces); the Windows line is Git-for-Windows
+    // binary mode (one space + `*`).
+    const MIXED_CHECKSUMS: &str = "\
+3667b7b3fd64ea27f07b438514a75201cc6de094f6058fa76c8a121a9913646f  demucs-macos-arm64
+5b47f31032a433b9fb544e03f13096dbab763b493e8ded99d68b42bfdc2a7e73  demucs-macos-x86_64
+65e2c3a8439719cfcb5d9c17f32c472672c54e8c833cf416524f82e29faceb2b  demucs-linux-x86_64
+81304de02cab6439b8dc72c82e09c7bf18c856f1afe66223d44de30ed5892e90 *demucs-windows-x86_64.exe
+";
+
+    #[test]
+    fn find_checksum_parses_text_mode_two_spaces() {
+        assert_eq!(
+            find_checksum(MIXED_CHECKSUMS, "demucs-macos-arm64").as_deref(),
+            Some("3667b7b3fd64ea27f07b438514a75201cc6de094f6058fa76c8a121a9913646f")
+        );
+    }
+
+    #[test]
+    fn find_checksum_parses_binary_mode_asterisk() {
+        // Regression: the Windows line uses "<hash> *<file>" (one space + '*'),
+        // which the old two-space split missed entirely.
+        assert_eq!(
+            find_checksum(MIXED_CHECKSUMS, "demucs-windows-x86_64.exe").as_deref(),
+            Some("81304de02cab6439b8dc72c82e09c7bf18c856f1afe66223d44de30ed5892e90")
+        );
+    }
+
+    #[test]
+    fn find_checksum_handles_crlf_line_endings() {
+        let body = "aa11  demucs-linux-x86_64\r\nbb22 *demucs-windows-x86_64.exe\r\n";
+        assert_eq!(
+            find_checksum(body, "demucs-windows-x86_64.exe").as_deref(),
+            Some("bb22")
+        );
+    }
+
+    #[test]
+    fn find_checksum_returns_none_for_missing_asset() {
+        assert_eq!(
+            find_checksum(MIXED_CHECKSUMS, "demucs-freebsd-x86_64"),
+            None
+        );
+    }
+
     #[cfg(target_os = "macos")]
     #[test]
     fn remove_quarantine_errors_on_non_utf8_path() {
