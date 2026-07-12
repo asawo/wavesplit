@@ -1,6 +1,5 @@
 use crate::constants::{DEMUCS_MODEL, STEM_NAMES};
 use std::path::Path;
-use std::process::Command;
 
 /// Run Demucs on `source_wav`, writing 4 stems into `stems_dir`.
 /// `demucs_bin` is the path to the frozen demucs executable.
@@ -24,7 +23,7 @@ pub fn separate(
     let result: Result<(), String> = (|| {
         std::fs::create_dir_all(cache_dir).map_err(|e| format!("mkdir cache_dir: {e}"))?;
 
-        let output = Command::new(demucs_bin)
+        let output = super::bins::command(demucs_bin)
             .args([
                 "--name",
                 DEMUCS_MODEL,
