@@ -15,6 +15,9 @@ dist-ssr
 # Claude Code session data
 .claude/
 
+# Local toolchain pins (asdf/mise) — not everyone uses a version manager
+.tool-versions
+
 # Editor directories and files
 .vscode
 .idea
