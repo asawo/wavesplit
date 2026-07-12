@@ -1,5 +1,4 @@
 use std::path::Path;
-use std::process::Command;
 
 use super::bins;
 
@@ -10,7 +9,7 @@ pub fn from_youtube(url: &str, dest: &Path) -> Result<(), String> {
         .parent()
         .map(|p| p.to_path_buf())
         .unwrap_or(ffmpeg.clone());
-    let output = Command::new(bins::resolve("yt-dlp"))
+    let output = bins::command(bins::resolve("yt-dlp"))
         .args([
             "--ffmpeg-location",
             ffmpeg_dir.to_str().ok_or("invalid ffmpeg path")?,
@@ -48,7 +47,7 @@ pub fn from_local(src: &Path, dest: &Path) -> Result<(), String> {
     if ext == "wav" {
         std::fs::copy(src, dest).map_err(|e| format!("failed to copy WAV: {e}"))?;
     } else {
-        let output = Command::new(bins::resolve("ffmpeg"))
+        let output = bins::command(bins::resolve("ffmpeg"))
             .args([
                 "-y",
                 "-i",
@@ -77,7 +76,7 @@ pub fn youtube_title(url: &str) -> Option<String> {
         .parent()
         .map(|p| p.to_path_buf())
         .unwrap_or(ffmpeg.clone());
-    let output = Command::new(bins::resolve("yt-dlp"))
+    let output = bins::command(bins::resolve("yt-dlp"))
         .args([
             "--ffmpeg-location",
             ffmpeg_dir.to_str()?,
@@ -113,7 +112,7 @@ pub fn local_title(src: &Path) -> String {
 /// (e.g. format=duration was "N/A"). Returns `Err` for execution failures
 /// — callers should treat this as a non-fatal best-effort and continue.
 pub fn probe_duration_ms(src: &Path) -> Result<Option<i64>, String> {
-    let output = Command::new(bins::resolve("ffprobe"))
+    let output = bins::command(bins::resolve("ffprobe"))
         .args([
             "-v",
             "error",
