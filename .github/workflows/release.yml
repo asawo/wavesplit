@@ -7,7 +7,7 @@ on:
 
 env:
   YT_DLP_VERSION: "2026.03.17"     # https://github.com/yt-dlp/yt-dlp/releases
-  FFMPEG_MACOS_VERSION: "7.1.1"    # https://evermeet.cx/ffmpeg/ (check for latest release zip name)
+  FFMPEG_MACOS_VERSION: "7.1.1"    # x86_64: https://evermeet.cx/ffmpeg/ | arm64: https://www.osxexperts.net/ (zip name drops the dots, e.g. 711)
   FFMPEG_LINUX_VERSION: "6.1"      # https://ffbinaries.com/api/v1/versions
   FFMPEG_WIN_VERSION: "7.1"  # pins ffmpeg minor version; uses BtbN "latest" release tag (stable filenames per minor version)
 
@@ -146,17 +146,39 @@ jobs:
         run: |
           mkdir -p core/binaries
           # yt-dlp — universal binary, runs natively on both arm64 and x86_64
-          curl -fsSL "https://github.com/yt-dlp/yt-dlp/releases/download/${{ env.YT_DLP_VERSION }}/yt-dlp_macos" \
+          curl -fsSL --retry 3 --retry-all-errors "https://github.com/yt-dlp/yt-dlp/releases/download/${{ env.YT_DLP_VERSION }}/yt-dlp_macos" \
             -o core/binaries/yt-dlp-${{ matrix.target }}
           chmod +x core/binaries/yt-dlp-${{ matrix.target }}
-          # ffmpeg + ffprobe — evermeet.cx x86_64 static builds.
-          # No public static arm64 build exists; x86_64 runs via Rosetta 2 on Apple Silicon.
-          curl -fsSL "https://evermeet.cx/ffmpeg/ffmpeg-${{ env.FFMPEG_MACOS_VERSION }}.zip" -o ffmpeg.zip
-          curl -fsSL "https://evermeet.cx/ffmpeg/ffprobe-${{ env.FFMPEG_MACOS_VERSION }}.zip" -o ffprobe.zip
+          # ffmpeg + ffprobe — native static builds per arch, so no Rosetta dependency
+          # (which macOS now warns about on Apple Silicon).
+          #   x86_64: evermeet.cx  |  arm64: osxexperts.net (zip name drops the dots)
+          if [ "${{ matrix.target }}" = "aarch64-apple-darwin" ]; then
+            ver_nodots="${FFMPEG_MACOS_VERSION//./}"
+            ffmpeg_url="https://www.osxexperts.net/ffmpeg${ver_nodots}arm.zip"
+            ffprobe_url="https://www.osxexperts.net/ffprobe${ver_nodots}arm.zip"
+          else
+            ffmpeg_url="https://evermeet.cx/ffmpeg/ffmpeg-${FFMPEG_MACOS_VERSION}.zip"
+            ffprobe_url="https://evermeet.cx/ffmpeg/ffprobe-${FFMPEG_MACOS_VERSION}.zip"
+          fi
+          # osxexperts.net is bandwidth-throttled, so allow a generous timeout + retries.
+          curl -fsSL --retry 4 --retry-all-errors --retry-delay 5 --max-time 300 "$ffmpeg_url" -o ffmpeg.zip
+          curl -fsSL --retry 4 --retry-all-errors --retry-delay 5 --max-time 300 "$ffprobe_url" -o ffprobe.zip
           unzip -o ffmpeg.zip ffmpeg -d .
           unzip -o ffprobe.zip ffprobe -d .
           cp ffmpeg core/binaries/ffmpeg-${{ matrix.target }}
           cp ffprobe core/binaries/ffprobe-${{ matrix.target }}
+          # Fail the build if the bundled arch doesn't match the target (belt-and-suspenders).
+          case "${{ matrix.target }}" in
+            aarch64-apple-darwin) want=arm64 ;;
+            x86_64-apple-darwin)  want=x86_64 ;;
+          esac
+          for bin in ffmpeg ffprobe; do
+            got=$(lipo -archs "core/binaries/${bin}-${{ matrix.target }}")
+            if [ "$got" != "$want" ]; then
+              echo "::error::${bin} arch mismatch: expected ${want}, got '${got}'"
+              exit 1
+            fi
+          done
 
       - name: Download sidecar binaries (Linux)
         if: matrix.os == 'ubuntu-22.04'
