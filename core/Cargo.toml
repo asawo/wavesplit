@@ -1,6 +1,6 @@
 [package]
 name = "wavesplit"
-version = "0.2.4"
+version = "0.2.5"
 description = "Desktop app for practicing with isolated audio stems"
 edition = "2021"
 
@@ -33,9 +33,6 @@ which = "6"
 sha2 = "0.10"
 hex = "0.4"
 url = "2"
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
-tracing-appender = "0.2"
 
 [dev-dependencies]
 tauri = { version = "~2.10", features = ["test"] }
