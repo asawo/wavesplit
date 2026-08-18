@@ -14,10 +14,14 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # macos-latest is arm64 (Apple Silicon) as of GitHub's April 2024 switch.
+          # PyInstaller can't cross-compile — it always packages for the host it
+          # runs on — so the x86_64 entry must run on an actual Intel runner or it
+          # silently produces an arm64 binary mislabeled as x86_64.
           - os: macos-latest
             target: aarch64-apple-darwin
             asset: demucs-macos-arm64
-          - os: macos-latest
+          - os: macos-15-intel
             target: x86_64-apple-darwin
             asset: demucs-macos-x86_64
           - os: ubuntu-22.04
@@ -38,9 +42,18 @@ jobs:
 
       # CPU-only torch is ~200MB installed vs ~2GB for GPU builds.
       # Demucs runs fine on CPU — just slower than GPU.
+      #
+      # PyTorch stopped publishing macOS x86_64 (Intel) wheels after 2.2.2
+      # (https://dev-discuss.pytorch.org/t/pytorch-macos-x86-builds-deprecation-starting-january-2024/1690).
+      # Pin that entry to the last version with real Intel-mac wheels.
       - name: Install CPU-only PyTorch
         run: |
-          pip install torch==2.5.0 torchaudio==2.5.0 --index-url https://download.pytorch.org/whl/cpu
+          if [ "${{ matrix.target }}" = "x86_64-apple-darwin" ]; then
+            TORCH_VERSION=2.2.2
+          else
+            TORCH_VERSION=2.5.0
+          fi
+          pip install torch==$TORCH_VERSION torchaudio==$TORCH_VERSION --index-url https://download.pytorch.org/whl/cpu
 
       - name: Install demucs + PyInstaller
         run: pip install "numpy<2" demucs pyinstaller soundfile
@@ -57,6 +70,22 @@ jobs:
             --collect-binaries torch \
             --name ${{ matrix.asset }} \
             demucs_runner.py
+
+      # Belt-and-suspenders: fail loudly if a runner label ever silently
+      # changes architecture again, instead of shipping a mislabeled binary.
+      - name: Verify built binary architecture (macOS)
+        if: startsWith(matrix.os, 'macos')
+        shell: bash
+        run: |
+          case "${{ matrix.target }}" in
+            aarch64-apple-darwin) want=arm64 ;;
+            x86_64-apple-darwin)  want=x86_64 ;;
+          esac
+          got=$(lipo -archs "python/dist/${{ matrix.asset }}")
+          if [ "$got" != "$want" ]; then
+            echo "::error::${{ matrix.asset }} arch mismatch: expected ${want}, got '${got}'"
+            exit 1
+          fi
 
       - name: Compute SHA-256
         shell: bash
