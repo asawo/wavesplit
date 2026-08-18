@@ -54,12 +54,19 @@ fn delete_track(id: String, state: tauri::State<AppState>) -> Result<(), String>
         return Err("track not found".to_string());
     }
     let track_dir = paths::track_dir(&state.data_dir, &id);
-    // If a symlink was somehow planted at the track dir path, unlink it directly rather than
-    // recursing through it — remove_dir_all should never follow a top-level symlink out of
-    // the tracks root.
+    // If a symlink was somehow planted at the track dir path, unlink the entry itself rather
+    // than recursing through it — remove_dir_all should never follow a top-level symlink out
+    // of the tracks root. On Windows, directory-type reparse points must be removed via
+    // RemoveDirectoryW (`remove_dir`), not DeleteFileW (`remove_file`); symlink_metadata's
+    // `is_dir()` reports that without following the link (on Unix a symlink never reports as
+    // a dir here, so this always falls through to `remove_file` there, which is correct).
     match std::fs::symlink_metadata(&track_dir) {
         Ok(meta) if meta.file_type().is_symlink() => {
-            std::fs::remove_file(&track_dir).map_err(|e| e.to_string())?;
+            if meta.is_dir() {
+                std::fs::remove_dir(&track_dir).map_err(|e| e.to_string())?;
+            } else {
+                std::fs::remove_file(&track_dir).map_err(|e| e.to_string())?;
+            }
         }
         Ok(_) => std::fs::remove_dir_all(&track_dir).map_err(|e| e.to_string())?,
         Err(_) => {}
@@ -381,6 +388,79 @@ mod tests {
         assert!(
             !track_dir.exists(),
             "symlink at the track dir path should be removed"
+        );
+        assert!(
+            marker.exists(),
+            "the symlink target's contents must not be touched"
+        );
+
+        let _ = std::fs::remove_dir_all(&data_dir);
+        let _ = std::fs::remove_dir_all(&target_dir);
+    }
+
+    // Windows distinguishes directory-type reparse points from file symlinks at the deletion
+    // API level (RemoveDirectoryW vs DeleteFileW); this mirrors the Unix test above using
+    // `symlink_dir` to make sure that distinction is handled.
+    #[cfg(windows)]
+    #[test]
+    fn delete_track_unlinks_directory_symlink_without_following_it() {
+        use std::os::windows::fs::symlink_dir;
+
+        let data_dir = temp_data_dir("symlink-escape-windows");
+        let id = "99999999-9999-9999-9999-999999999998";
+
+        let target_dir = std::env::temp_dir().join(format!(
+            "wavesplit-lib-test-symlink-target-windows-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&target_dir).unwrap();
+        let marker = target_dir.join("marker.txt");
+        std::fs::write(&marker, b"do not delete me").unwrap();
+
+        let track_dir = data_dir.join("tracks").join(id);
+        // Directory symlink creation requires developer mode or admin privileges on Windows;
+        // skip rather than fail the suite in restricted CI/dev environments.
+        if symlink_dir(&target_dir, &track_dir).is_err() {
+            let _ = std::fs::remove_dir_all(&data_dir);
+            let _ = std::fs::remove_dir_all(&target_dir);
+            return;
+        }
+
+        let app = mock_app();
+        app.manage(state_with_data_dir(data_dir.clone()));
+        {
+            let state = app.state::<AppState>();
+            let conn = state.db.lock().unwrap();
+            db::insert_track(
+                &conn,
+                &db::Track {
+                    id: id.to_string(),
+                    title: "T".to_string(),
+                    source_type: "local".to_string(),
+                    source_url: None,
+                    source_path: None,
+                    created_at: "2024-01-01T00:00:00Z".to_string(),
+                    sort_order: 1,
+                    duration_ms: None,
+                    status_download: "done".to_string(),
+                    status_stems: "done".to_string(),
+                    status_analysis: "done".to_string(),
+                    error_message: None,
+                    export_path: None,
+                    artist: None,
+                },
+            )
+            .unwrap();
+        }
+
+        let result = delete_track(id.to_string(), app.state::<AppState>());
+        assert!(result.is_ok(), "{:?}", result.err());
+        assert!(
+            !track_dir.exists(),
+            "directory symlink at the track dir path should be removed"
         );
         assert!(
             marker.exists(),
