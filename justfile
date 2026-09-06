@@ -18,12 +18,12 @@ setup-bins:
     mkdir -p "$BIN_DIR"
     for tool in yt-dlp ffmpeg ffprobe; do
         dest="$BIN_DIR/${tool}-${TARGET}"
-        if [ ! -f "$dest" ]; then
-            src=$(which "$tool" 2>/dev/null || true)
-            if [ -z "$src" ]; then
-                echo "ERROR: $tool not found — install with: brew install $tool"
-                exit 1
-            fi
+        src=$(which "$tool" 2>/dev/null || true)
+        if [ -z "$src" ]; then
+            echo "ERROR: $tool not found — install with: brew install $tool"
+            exit 1
+        fi
+        if ! cmp -s "$src" "$dest" 2>/dev/null; then
             cp "$src" "$dest"
             echo "copied $src → $dest"
         fi
