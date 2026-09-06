@@ -6,7 +6,11 @@ on:
       - "v[0-9]*"
 
 env:
-  YT_DLP_VERSION: "2026.03.17"     # https://github.com/yt-dlp/yt-dlp/releases
+  # yt-dlp is intentionally NOT pinned (see "Download sidecar binaries" steps below,
+  # which fetch /releases/latest/): YouTube changes extraction internals often enough
+  # that a pinned yt-dlp routinely goes stale and starts failing downloads with
+  # "HTTP Error 403: Forbidden" within weeks. ffmpeg/ffprobe just decode/encode audio,
+  # a stable job that doesn't rot the same way, so those stay pinned for reproducibility.
   FFMPEG_MACOS_VERSION: "7.1.1"    # x86_64: https://evermeet.cx/ffmpeg/ | arm64: https://www.osxexperts.net/ (zip name drops the dots, e.g. 711)
   FFMPEG_LINUX_VERSION: "6.1"      # https://ffbinaries.com/api/v1/versions
   FFMPEG_WIN_VERSION: "7.1"  # pins ffmpeg minor version; uses BtbN "latest" release tag (stable filenames per minor version)
@@ -145,8 +149,10 @@ jobs:
         if: matrix.os == 'macos-latest'
         run: |
           mkdir -p core/binaries
-          # yt-dlp — universal binary, runs natively on both arm64 and x86_64
-          curl -fsSL --retry 3 --retry-all-errors --max-time 120 "https://github.com/yt-dlp/yt-dlp/releases/download/${{ env.YT_DLP_VERSION }}/yt-dlp_macos" \
+          # yt-dlp — universal binary, runs natively on both arm64 and x86_64.
+          # Always fetch the latest release rather than a pinned version — see the
+          # "env:" block comment at the top of this file for why.
+          curl -fsSL --retry 3 --retry-all-errors --max-time 120 "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos" \
             -o core/binaries/yt-dlp-${{ matrix.target }}
           chmod +x core/binaries/yt-dlp-${{ matrix.target }}
           # ffmpeg + ffprobe — native static builds per arch, so no Rosetta dependency
@@ -188,8 +194,9 @@ jobs:
         if: matrix.os == 'ubuntu-22.04'
         run: |
           mkdir -p core/binaries
-          # yt-dlp
-          curl -fsSL "https://github.com/yt-dlp/yt-dlp/releases/download/${{ env.YT_DLP_VERSION }}/yt-dlp" \
+          # yt-dlp — always fetch latest, not pinned; see the "env:" block comment
+          # at the top of this file for why.
+          curl -fsSL "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp" \
             -o core/binaries/yt-dlp-${{ matrix.target }}
           chmod +x core/binaries/yt-dlp-${{ matrix.target }}
           # ffmpeg + ffprobe — static builds from ffbinaries.com (pinned version)
@@ -208,8 +215,9 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path core/binaries | Out-Null
-          # yt-dlp
-          Invoke-WebRequest -Uri "https://github.com/yt-dlp/yt-dlp/releases/download/${{ env.YT_DLP_VERSION }}/yt-dlp.exe" `
+          # yt-dlp — always fetch latest, not pinned; see the "env:" block comment
+          # at the top of this file for why.
+          Invoke-WebRequest -Uri "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe" `
             -OutFile "core/binaries/yt-dlp-${{ matrix.target }}.exe"
             # ffmpeg — BtbN static build (pinned release tag)
           Invoke-WebRequest -Uri "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n${{ env.FFMPEG_WIN_VERSION }}-latest-win64-gpl-${{ env.FFMPEG_WIN_VERSION }}.zip" `
