@@ -37,6 +37,7 @@ fn list_tracks(state: tauri::State<AppState>) -> Result<Vec<db::Track>, String> 
 
 #[tauri::command]
 fn delete_track(id: String, state: tauri::State<AppState>) -> Result<(), String> {
+    let id = paths::parse_track_id(&id)?;
     // Cancel any in-flight pipeline task before touching the filesystem.
     if let Ok(mut tasks) = state.tasks.lock() {
         if let Some(token) = tasks.remove(&id) {
@@ -47,11 +48,28 @@ fn delete_track(id: String, state: tauri::State<AppState>) -> Result<(), String>
         .db
         .lock()
         .map_err(|_| "database unavailable".to_string())?;
-    db::delete_track(&conn, &id).map_err(|e| e.to_string())?;
+    let rows = db::delete_track(&conn, &id).map_err(|e| e.to_string())?;
     drop(conn);
+    if rows == 0 {
+        return Err("track not found".to_string());
+    }
     let track_dir = paths::track_dir(&state.data_dir, &id);
-    if track_dir.exists() {
-        std::fs::remove_dir_all(&track_dir).map_err(|e| e.to_string())?;
+    // If a symlink was somehow planted at the track dir path, unlink the entry itself rather
+    // than recursing through it — remove_dir_all should never follow a top-level symlink out
+    // of the tracks root. On Windows, directory-type reparse points must be removed via
+    // RemoveDirectoryW (`remove_dir`), not DeleteFileW (`remove_file`); symlink_metadata's
+    // `is_dir()` reports that without following the link (on Unix a symlink never reports as
+    // a dir here, so this always falls through to `remove_file` there, which is correct).
+    match std::fs::symlink_metadata(&track_dir) {
+        Ok(meta) if meta.file_type().is_symlink() => {
+            if meta.is_dir() {
+                std::fs::remove_dir(&track_dir).map_err(|e| e.to_string())?;
+            } else {
+                std::fs::remove_file(&track_dir).map_err(|e| e.to_string())?;
+            }
+        }
+        Ok(_) => std::fs::remove_dir_all(&track_dir).map_err(|e| e.to_string())?,
+        Err(_) => {}
     }
     Ok(())
 }
@@ -206,5 +224,250 @@ pub(crate) mod test_support {
             let mut events = self.capture.events.lock().unwrap();
             events.push((level, visitor.0));
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tauri::{test::mock_app, Manager};
+
+    fn temp_data_dir(label: &str) -> std::path::PathBuf {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("wavesplit-lib-test-{label}-{nanos}"));
+        std::fs::create_dir_all(dir.join("tracks")).unwrap();
+        dir
+    }
+
+    fn state_with_data_dir(data_dir: std::path::PathBuf) -> AppState {
+        AppState {
+            db: Arc::new(Mutex::new(
+                db::open(std::path::Path::new(":memory:")).unwrap(),
+            )),
+            data_dir,
+            demucs_dir: std::path::PathBuf::from("/tmp"),
+            tasks: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+
+    #[test]
+    fn delete_track_rejects_traversal_id() {
+        let data_dir = temp_data_dir("traversal");
+        let app = mock_app();
+        app.manage(state_with_data_dir(data_dir.clone()));
+        let result = delete_track("../../evil".to_string(), app.state::<AppState>());
+        assert!(result.is_err());
+        assert!(
+            data_dir.join("tracks").read_dir().unwrap().next().is_none(),
+            "tracks dir should be untouched"
+        );
+        let _ = std::fs::remove_dir_all(&data_dir);
+    }
+
+    #[test]
+    fn delete_track_rejects_absolute_path_id() {
+        let data_dir = temp_data_dir("abs-path");
+        let app = mock_app();
+        app.manage(state_with_data_dir(data_dir.clone()));
+        let result = delete_track("/etc/passwd".to_string(), app.state::<AppState>());
+        assert!(result.is_err());
+        let _ = std::fs::remove_dir_all(&data_dir);
+    }
+
+    #[test]
+    fn delete_track_returns_not_found_for_unknown_uuid() {
+        let data_dir = temp_data_dir("unknown-uuid");
+        let app = mock_app();
+        app.manage(state_with_data_dir(data_dir.clone()));
+        let id = "77777777-7777-7777-7777-777777777777".to_string();
+        let result = delete_track(id, app.state::<AppState>());
+        assert!(result.unwrap_err().contains("not found"));
+        let _ = std::fs::remove_dir_all(&data_dir);
+    }
+
+    #[test]
+    fn delete_track_removes_existing_track() {
+        let data_dir = temp_data_dir("removes-existing");
+        let id = "88888888-8888-8888-8888-888888888888";
+        let track_dir = data_dir.join("tracks").join(id);
+        std::fs::create_dir_all(&track_dir).unwrap();
+        std::fs::write(track_dir.join("source.wav"), b"stub").unwrap();
+
+        let app = mock_app();
+        app.manage(state_with_data_dir(data_dir.clone()));
+        {
+            let state = app.state::<AppState>();
+            let conn = state.db.lock().unwrap();
+            db::insert_track(
+                &conn,
+                &db::Track {
+                    id: id.to_string(),
+                    title: "T".to_string(),
+                    source_type: "local".to_string(),
+                    source_url: None,
+                    source_path: None,
+                    created_at: "2024-01-01T00:00:00Z".to_string(),
+                    sort_order: 1,
+                    duration_ms: None,
+                    status_download: "done".to_string(),
+                    status_stems: "done".to_string(),
+                    status_analysis: "done".to_string(),
+                    error_message: None,
+                    export_path: None,
+                    artist: None,
+                },
+            )
+            .unwrap();
+        }
+
+        let result = delete_track(id.to_string(), app.state::<AppState>());
+        assert!(result.is_ok(), "{:?}", result.err());
+        assert!(!track_dir.exists());
+        {
+            let state = app.state::<AppState>();
+            let conn = state.db.lock().unwrap();
+            assert!(db::get_track(&conn, id).unwrap().is_none());
+        }
+        let _ = std::fs::remove_dir_all(&data_dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn delete_track_unlinks_symlink_without_following_it() {
+        use std::os::unix::fs::symlink;
+
+        let data_dir = temp_data_dir("symlink-escape");
+        let id = "99999999-9999-9999-9999-999999999999";
+
+        let target_dir = std::env::temp_dir().join(format!(
+            "wavesplit-lib-test-symlink-target-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&target_dir).unwrap();
+        let marker = target_dir.join("marker.txt");
+        std::fs::write(&marker, b"do not delete me").unwrap();
+
+        let track_dir = data_dir.join("tracks").join(id);
+        symlink(&target_dir, &track_dir).unwrap();
+
+        let app = mock_app();
+        app.manage(state_with_data_dir(data_dir.clone()));
+        {
+            let state = app.state::<AppState>();
+            let conn = state.db.lock().unwrap();
+            db::insert_track(
+                &conn,
+                &db::Track {
+                    id: id.to_string(),
+                    title: "T".to_string(),
+                    source_type: "local".to_string(),
+                    source_url: None,
+                    source_path: None,
+                    created_at: "2024-01-01T00:00:00Z".to_string(),
+                    sort_order: 1,
+                    duration_ms: None,
+                    status_download: "done".to_string(),
+                    status_stems: "done".to_string(),
+                    status_analysis: "done".to_string(),
+                    error_message: None,
+                    export_path: None,
+                    artist: None,
+                },
+            )
+            .unwrap();
+        }
+
+        let result = delete_track(id.to_string(), app.state::<AppState>());
+        assert!(result.is_ok(), "{:?}", result.err());
+        assert!(
+            !track_dir.exists(),
+            "symlink at the track dir path should be removed"
+        );
+        assert!(
+            marker.exists(),
+            "the symlink target's contents must not be touched"
+        );
+
+        let _ = std::fs::remove_dir_all(&data_dir);
+        let _ = std::fs::remove_dir_all(&target_dir);
+    }
+
+    // Windows distinguishes directory-type reparse points from file symlinks at the deletion
+    // API level (RemoveDirectoryW vs DeleteFileW); this mirrors the Unix test above using
+    // `symlink_dir` to make sure that distinction is handled.
+    #[cfg(windows)]
+    #[test]
+    fn delete_track_unlinks_directory_symlink_without_following_it() {
+        use std::os::windows::fs::symlink_dir;
+
+        let data_dir = temp_data_dir("symlink-escape-windows");
+        let id = "99999999-9999-9999-9999-999999999998";
+
+        let target_dir = std::env::temp_dir().join(format!(
+            "wavesplit-lib-test-symlink-target-windows-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&target_dir).unwrap();
+        let marker = target_dir.join("marker.txt");
+        std::fs::write(&marker, b"do not delete me").unwrap();
+
+        let track_dir = data_dir.join("tracks").join(id);
+        // Directory symlink creation requires developer mode or admin privileges on Windows;
+        // skip rather than fail the suite in restricted CI/dev environments.
+        if symlink_dir(&target_dir, &track_dir).is_err() {
+            let _ = std::fs::remove_dir_all(&data_dir);
+            let _ = std::fs::remove_dir_all(&target_dir);
+            return;
+        }
+
+        let app = mock_app();
+        app.manage(state_with_data_dir(data_dir.clone()));
+        {
+            let state = app.state::<AppState>();
+            let conn = state.db.lock().unwrap();
+            db::insert_track(
+                &conn,
+                &db::Track {
+                    id: id.to_string(),
+                    title: "T".to_string(),
+                    source_type: "local".to_string(),
+                    source_url: None,
+                    source_path: None,
+                    created_at: "2024-01-01T00:00:00Z".to_string(),
+                    sort_order: 1,
+                    duration_ms: None,
+                    status_download: "done".to_string(),
+                    status_stems: "done".to_string(),
+                    status_analysis: "done".to_string(),
+                    error_message: None,
+                    export_path: None,
+                    artist: None,
+                },
+            )
+            .unwrap();
+        }
+
+        let result = delete_track(id.to_string(), app.state::<AppState>());
+        assert!(result.is_ok(), "{:?}", result.err());
+        assert!(
+            !track_dir.exists(),
+            "directory symlink at the track dir path should be removed"
+        );
+        assert!(
+            marker.exists(),
+            "the symlink target's contents must not be touched"
+        );
+
+        let _ = std::fs::remove_dir_all(&data_dir);
+        let _ = std::fs::remove_dir_all(&target_dir);
     }
 }

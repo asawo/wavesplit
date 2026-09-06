@@ -99,12 +99,11 @@ pub fn update_track_meta(
     id: &str,
     title: &str,
     artist: Option<&str>,
-) -> Result<()> {
+) -> Result<usize> {
     conn.execute(
         "UPDATE tracks SET title = ?1, artist = ?2 WHERE id = ?3",
         params![title, artist, id],
-    )?;
-    Ok(())
+    )
 }
 
 pub fn list_tracks(conn: &Connection) -> Result<Vec<Track>> {
@@ -151,9 +150,8 @@ pub fn update_status(
     Ok(())
 }
 
-pub fn delete_track(conn: &Connection, id: &str) -> Result<()> {
-    conn.execute("DELETE FROM tracks WHERE id = ?1", params![id])?;
-    Ok(())
+pub fn delete_track(conn: &Connection, id: &str) -> Result<usize> {
+    conn.execute("DELETE FROM tracks WHERE id = ?1", params![id])
 }
 
 /// On startup: reset any track with a pending stage to error so the UI can offer retry.
@@ -411,7 +409,10 @@ mod tests {
     fn update_track_meta_changes_title_and_artist() {
         let conn = open_mem();
         insert_track(&conn, &sample_track("t9")).unwrap();
-        update_track_meta(&conn, "t9", "New Title", Some("New Artist")).unwrap();
+        assert_eq!(
+            update_track_meta(&conn, "t9", "New Title", Some("New Artist")).unwrap(),
+            1
+        );
         let track = get_track(&conn, "t9").unwrap().unwrap();
         assert_eq!(track.title, "New Title");
         assert_eq!(track.artist.as_deref(), Some("New Artist"));
@@ -485,8 +486,23 @@ mod tests {
         let conn = open_mem();
         insert_track(&conn, &sample_track("t12")).unwrap();
         assert!(get_track(&conn, "t12").unwrap().is_some());
-        delete_track(&conn, "t12").unwrap();
+        assert_eq!(delete_track(&conn, "t12").unwrap(), 1);
         assert!(get_track(&conn, "t12").unwrap().is_none());
+    }
+
+    #[test]
+    fn delete_track_returns_zero_for_missing_row() {
+        let conn = open_mem();
+        assert_eq!(delete_track(&conn, "nonexistent").unwrap(), 0);
+    }
+
+    #[test]
+    fn update_track_meta_returns_zero_for_missing_row() {
+        let conn = open_mem();
+        assert_eq!(
+            update_track_meta(&conn, "nonexistent", "Title", None).unwrap(),
+            0
+        );
     }
 
     #[test]

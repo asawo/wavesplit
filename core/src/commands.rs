@@ -90,7 +90,7 @@ pub struct AddTrackResult {
     pub duplicate: bool,
 }
 
-#[derive(serde::Serialize)]
+#[derive(Debug, serde::Serialize)]
 pub struct StemPaths {
     pub vocals: String,
     pub drums: String,
@@ -103,6 +103,19 @@ pub fn get_stem_paths(
     track_id: String,
     state: tauri::State<'_, AppState>,
 ) -> Result<StemPaths, String> {
+    let track_id = paths::parse_track_id(&track_id)?;
+    {
+        let conn = state
+            .db
+            .lock()
+            .map_err(|_| "database unavailable".to_string())?;
+        if db::get_track(&conn, &track_id)
+            .map_err(|e| e.to_string())?
+            .is_none()
+        {
+            return Err("track not found".into());
+        }
+    }
     let stems = paths::stems_dir(&state.data_dir, &track_id);
     let p = |name: &str| stems.join(name).to_string_lossy().into_owned();
     Ok(StemPaths {
@@ -151,39 +164,78 @@ pub async fn add_track_youtube(
     })
 }
 
+// Keep in sync with ACCEPTED_AUDIO_EXTENSIONS in ui/lib/importTrack.ts.
+const ACCEPTED_LOCAL_EXTENSIONS: [&str; 6] = ["mp3", "wav", "flac", "m4a", "aac", "ogg"];
+
+/// Canonicalizes and validates a caller-supplied local import path. Canonicalization requires
+/// the path to exist on disk, which rejects protocol-like strings (`http://...`) and traversal
+/// sequences that don't resolve to a real file; it also resolves symlinks, so the extension and
+/// regular-file checks below apply to the real target rather than a symlink pointing elsewhere.
+fn validate_local_source(raw: &str) -> Result<std::path::PathBuf, String> {
+    if raw.is_empty() || raw.contains("://") {
+        return Err("invalid local file path".to_string());
+    }
+    let canonical = std::path::Path::new(raw)
+        .canonicalize()
+        .map_err(|_| "file not found".to_string())?;
+    if !canonical.is_file() {
+        return Err("not a regular file".to_string());
+    }
+    let ext = canonical
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+    if !ACCEPTED_LOCAL_EXTENSIONS.contains(&ext.as_str()) {
+        return Err(format!("unsupported file type: .{ext}"));
+    }
+    Ok(canonical)
+}
+
 #[tauri::command]
-pub async fn add_track_local(
+pub async fn add_track_local<R: tauri::Runtime>(
     path: String,
-    app: AppHandle,
+    app: AppHandle<R>,
     state: tauri::State<'_, AppState>,
 ) -> Result<AddTrackResult, String> {
+    let canonical = validate_local_source(&path)?;
+    let canonical_str = canonical.to_string_lossy().into_owned();
     {
         let conn = state
             .db
             .lock()
             .map_err(|_| "database unavailable".to_string())?;
-        if let Some(existing) = db::find_by_path(&conn, &path).map_err(|e| e.to_string())? {
+        if let Some(existing) =
+            db::find_by_path(&conn, &canonical_str).map_err(|e| e.to_string())?
+        {
             return Ok(AddTrackResult {
                 id: existing.id,
                 duplicate: true,
             });
         }
     }
-    let src = std::path::PathBuf::from(&path);
-    let title = pipeline::download::local_title(&src);
-    let id = add_track(Source::Local(src), title, None, Some(path), app, state).await?;
+    let title = pipeline::download::local_title(&canonical);
+    let id = add_track(
+        Source::Local(canonical),
+        title,
+        None,
+        Some(canonical_str),
+        app,
+        state,
+    )
+    .await?;
     Ok(AddTrackResult {
         id,
         duplicate: false,
     })
 }
 
-async fn add_track(
+async fn add_track<R: tauri::Runtime>(
     source: Source,
     title: String,
     source_url: Option<String>,
     source_path: Option<String>,
-    app: AppHandle,
+    app: AppHandle<R>,
     state: tauri::State<'_, AppState>,
 ) -> Result<String, String> {
     let id = Uuid::new_v4().to_string();
@@ -245,6 +297,7 @@ pub fn export_stems(
     dest_dir: String,
     state: tauri::State<'_, AppState>,
 ) -> Result<Vec<String>, String> {
+    let track_id = paths::parse_track_id(&track_id)?;
     {
         let conn = state
             .db
@@ -301,11 +354,17 @@ pub fn update_track_meta(
     artist: Option<String>,
     state: tauri::State<'_, AppState>,
 ) -> Result<(), String> {
+    let id = paths::parse_track_id(&id)?;
     let conn = state
         .db
         .lock()
         .map_err(|_| "database unavailable".to_string())?;
-    db::update_track_meta(&conn, &id, &title, artist.as_deref()).map_err(|e| e.to_string())
+    let rows =
+        db::update_track_meta(&conn, &id, &title, artist.as_deref()).map_err(|e| e.to_string())?;
+    if rows == 0 {
+        return Err("track not found".to_string());
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -324,6 +383,7 @@ pub async fn retry_track<R: tauri::Runtime>(
     app: AppHandle<R>,
     state: tauri::State<'_, AppState>,
 ) -> Result<(), String> {
+    let id = paths::parse_track_id(&id)?;
     // Don't retry if already running
     if state
         .tasks
@@ -473,16 +533,17 @@ mod tests {
             tasks: Arc::clone(&tasks),
         };
 
+        let track_id = "22222222-2222-2222-2222-222222222222";
         tasks
             .lock()
             .unwrap()
-            .insert("test-retry-id".to_string(), CancellationToken::new());
+            .insert(track_id.to_string(), CancellationToken::new());
 
         let app = mock_app();
         app.manage(app_state);
         let state = app.state::<AppState>();
 
-        let result = retry_track("test-retry-id".to_string(), app.handle().clone(), state).await;
+        let result = retry_track(track_id.to_string(), app.handle().clone(), state).await;
 
         assert!(result.is_err());
         assert!(
@@ -554,12 +615,13 @@ mod tests {
             tasks: Arc::clone(&tasks),
         };
 
+        let track_id = "33333333-3333-3333-3333-333333333333";
         {
             let conn = db.lock().unwrap();
             crate::db::insert_track(
                 &conn,
                 &crate::db::Track {
-                    id: "test-retry-spawn".to_string(),
+                    id: track_id.to_string(),
                     title: "Retry Test".to_string(),
                     source_type: "youtube".to_string(),
                     source_url: Some("https://youtube.com/watch?v=test".to_string()),
@@ -582,18 +644,18 @@ mod tests {
         app.manage(app_state);
         let state = app.state::<AppState>();
 
-        let result = retry_track("test-retry-spawn".to_string(), app.handle().clone(), state).await;
+        let result = retry_track(track_id.to_string(), app.handle().clone(), state).await;
 
         assert!(result.is_ok(), "retry should succeed: {:?}", result.err());
 
         assert!(
-            tasks.lock().unwrap().contains_key("test-retry-spawn"),
+            tasks.lock().unwrap().contains_key(track_id),
             "pipeline task should be spawned"
         );
 
         let start = std::time::Instant::now();
         let timeout = std::time::Duration::from_secs(5);
-        while tasks.lock().unwrap().contains_key("test-retry-spawn") {
+        while tasks.lock().unwrap().contains_key(track_id) {
             if start.elapsed() > timeout {
                 panic!("pipeline task did not complete within timeout");
             }
@@ -625,5 +687,209 @@ mod tests {
             !tasks.lock().unwrap().contains_key(&track_id),
             "task entry should be removed even after a panic"
         );
+    }
+
+    fn mem_state() -> AppState {
+        AppState {
+            db: Arc::new(Mutex::new(
+                crate::db::open(std::path::Path::new(":memory:")).unwrap(),
+            )),
+            data_dir: std::path::PathBuf::from("/tmp"),
+            demucs_dir: std::path::PathBuf::from("/tmp"),
+            tasks: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+
+    #[test]
+    fn get_stem_paths_rejects_malformed_id() {
+        let app = mock_app();
+        app.manage(mem_state());
+        let result = get_stem_paths("../../etc".to_string(), app.state::<AppState>());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn get_stem_paths_rejects_unknown_track() {
+        let app = mock_app();
+        app.manage(mem_state());
+        let id = "44444444-4444-4444-4444-444444444444".to_string();
+        let result = get_stem_paths(id, app.state::<AppState>());
+        assert!(result.unwrap_err().contains("not found"));
+    }
+
+    #[test]
+    fn get_stem_paths_returns_paths_for_existing_track() {
+        let app = mock_app();
+        app.manage(mem_state());
+        let id = "55555555-5555-5555-5555-555555555555";
+        {
+            let state = app.state::<AppState>();
+            let conn = state.db.lock().unwrap();
+            let track = crate::db::Track {
+                id: id.to_string(),
+                title: "T".to_string(),
+                source_type: "local".to_string(),
+                source_url: None,
+                source_path: None,
+                created_at: "2024-01-01T00:00:00Z".to_string(),
+                sort_order: 1,
+                duration_ms: None,
+                status_download: "done".to_string(),
+                status_stems: "done".to_string(),
+                status_analysis: "done".to_string(),
+                error_message: None,
+                export_path: None,
+                artist: None,
+            };
+            crate::db::insert_track(&conn, &track).unwrap();
+        }
+        let result = get_stem_paths(id.to_string(), app.state::<AppState>()).unwrap();
+        assert!(result.bass.ends_with("bass.wav"));
+        assert!(result.bass.contains(id));
+    }
+
+    #[test]
+    fn export_stems_rejects_malformed_id() {
+        let app = mock_app();
+        app.manage(mem_state());
+        let result = export_stems(
+            "/etc/passwd".to_string(),
+            std::env::temp_dir().to_string_lossy().into_owned(),
+            app.state::<AppState>(),
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn update_track_meta_rejects_malformed_id() {
+        let app = mock_app();
+        app.manage(mem_state());
+        let result = update_track_meta(
+            "../../evil".to_string(),
+            "Title".to_string(),
+            None,
+            app.state::<AppState>(),
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn update_track_meta_rejects_unknown_track() {
+        let app = mock_app();
+        app.manage(mem_state());
+        let id = "66666666-6666-6666-6666-666666666666".to_string();
+        let result = update_track_meta(id, "Title".to_string(), None, app.state::<AppState>());
+        assert!(result.unwrap_err().contains("not found"));
+    }
+
+    #[tokio::test]
+    async fn retry_track_rejects_malformed_id() {
+        let app = mock_app();
+        app.manage(mem_state());
+        let state = app.state::<AppState>();
+        let result = retry_track("../../evil".to_string(), app.handle().clone(), state).await;
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn validate_local_source_rejects_missing_file() {
+        assert!(validate_local_source("/nonexistent/wavesplit-test/does-not-exist.wav").is_err());
+    }
+
+    #[test]
+    fn validate_local_source_rejects_protocol_like_input() {
+        assert!(validate_local_source("http://example.com/track.mp3").is_err());
+    }
+
+    #[test]
+    fn validate_local_source_rejects_directory() {
+        let dir = std::env::temp_dir();
+        assert!(validate_local_source(&dir.to_string_lossy()).is_err());
+    }
+
+    #[test]
+    fn validate_local_source_rejects_disallowed_extension() {
+        let path = std::env::temp_dir().join("wavesplit-test-validate-local-source.exe");
+        std::fs::write(&path, b"not audio").unwrap();
+        let result = validate_local_source(&path.to_string_lossy());
+        let _ = std::fs::remove_file(&path);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn validate_local_source_accepts_and_canonicalizes_valid_file() {
+        let path = std::env::temp_dir().join("wavesplit-test-validate-local-source.wav");
+        std::fs::write(&path, b"not real audio, just bytes").unwrap();
+        let expected = path.canonicalize().unwrap();
+        let result = validate_local_source(&path.to_string_lossy());
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(result.unwrap(), expected);
+    }
+
+    #[tokio::test]
+    async fn add_track_local_rejects_disallowed_extension() {
+        let bad_file = std::env::temp_dir().join("wavesplit-test-add-track-local.exe");
+        std::fs::write(&bad_file, b"not audio").unwrap();
+
+        let app = mock_app();
+        app.manage(mem_state());
+        let state = app.state::<AppState>();
+
+        let result = add_track_local(
+            bad_file.to_string_lossy().into_owned(),
+            app.handle().clone(),
+            state,
+        )
+        .await;
+        let _ = std::fs::remove_file(&bad_file);
+
+        assert!(result.is_err());
+        let state = app.state::<AppState>();
+        let conn = state.db.lock().unwrap();
+        assert!(
+            crate::db::list_tracks(&conn).unwrap().is_empty(),
+            "no track row should be inserted for a rejected import"
+        );
+    }
+
+    #[tokio::test]
+    async fn add_track_local_canonicalizes_and_dedupes_by_real_path() {
+        let wav_file = std::env::temp_dir().join("wavesplit-test-add-track-local-dedupe.wav");
+        std::fs::write(&wav_file, b"not real audio, just bytes").unwrap();
+        let canonical = wav_file.canonicalize().unwrap();
+
+        let app = mock_app();
+        app.manage(mem_state());
+
+        let first = add_track_local(
+            wav_file.to_string_lossy().into_owned(),
+            app.handle().clone(),
+            app.state::<AppState>(),
+        )
+        .await
+        .expect("first import should succeed");
+        assert!(!first.duplicate);
+
+        let second = add_track_local(
+            wav_file.to_string_lossy().into_owned(),
+            app.handle().clone(),
+            app.state::<AppState>(),
+        )
+        .await
+        .expect("second import should be detected as duplicate");
+        assert!(second.duplicate);
+        assert_eq!(second.id, first.id);
+
+        {
+            let state = app.state::<AppState>();
+            let conn = state.db.lock().unwrap();
+            let stored = crate::db::get_track(&conn, &first.id).unwrap().unwrap();
+            assert_eq!(
+                stored.source_path.as_deref(),
+                Some(canonical.to_string_lossy().as_ref())
+            );
+        }
+
+        let _ = std::fs::remove_file(&wav_file);
     }
 }
