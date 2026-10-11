@@ -13,7 +13,7 @@ env:
   # a stable job that doesn't rot the same way, so those stay pinned for reproducibility.
   FFMPEG_MACOS_VERSION: "7.1.1"    # x86_64: https://evermeet.cx/ffmpeg/ | arm64: https://www.osxexperts.net/ (zip name drops the dots, e.g. 711)
   FFMPEG_LINUX_VERSION: "6.1"      # https://ffbinaries.com/api/v1/versions
-  FFMPEG_WIN_VERSION: "7.1"  # pins ffmpeg minor version; uses BtbN "latest" release tag (stable filenames per minor version)
+  FFMPEG_WIN_VERSION: "8.1"  # pins ffmpeg minor version; uses BtbN "latest" release tag. BtbN only keeps the newest couple of minors there, so bump this when the download 404s
 
 jobs:
   # Validates the tag is valid semver and strictly greater than the previous release.
@@ -171,8 +171,8 @@ jobs:
             ffmpeg_url="https://evermeet.cx/ffmpeg/ffmpeg-${FFMPEG_MACOS_VERSION}.zip"
             ffprobe_url="https://evermeet.cx/ffmpeg/ffprobe-${FFMPEG_MACOS_VERSION}.zip"
           fi
-          curl -fsSL --retry 4 --retry-all-errors --retry-delay 5 --max-time 300 "$ffmpeg_url" -o ffmpeg.zip
-          curl -fsSL --retry 4 --retry-all-errors --retry-delay 5 --max-time 300 "$ffprobe_url" -o ffprobe.zip
+          curl -fsSL --retry 4 --retry-all-errors --retry-delay 30 --max-time 300 "$ffmpeg_url" -o ffmpeg.zip
+          curl -fsSL --retry 4 --retry-all-errors --retry-delay 30 --max-time 300 "$ffprobe_url" -o ffprobe.zip
           unzip -o ffmpeg.zip ffmpeg -d .
           unzip -o ffprobe.zip ffprobe -d .
           cp ffmpeg core/binaries/ffmpeg-${{ matrix.target }}
