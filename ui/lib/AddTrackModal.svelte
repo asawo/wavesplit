@@ -3,6 +3,7 @@
   import { getCurrentWebview } from "@tauri-apps/api/webview";
   import { addTrackYoutube } from "./commands";
   import { pickAndImportLocal, importLocalPath } from "./importTrack";
+  import { reportError } from "./errorReport.svelte";
 
   interface Props {
     onClose: () => void;
@@ -42,11 +43,12 @@
     url = "";
     onStarted(pendingUrl);
     onClose();
-    // Modal is closed; the pipeline toast surfaces progress and errors.
+    // Modal is closed; failures surface through the global error modal.
     try {
       const result = await addTrackYoutube(pendingUrl);
       await onAdded(result.id);
-    } catch {
+    } catch (e) {
+      reportError("Couldn't add YouTube track", e, { URL: pendingUrl });
       await onAdded(null);
     }
   }

@@ -1,5 +1,6 @@
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { addTrackLocal } from "./commands";
+import { reportError } from "./errorReport.svelte";
 
 export const ACCEPTED_AUDIO_EXTENSIONS = [
   "mp3",
@@ -21,8 +22,9 @@ interface ImportCallbacks {
  * flows so duplicate / error handling stays consistent.
  *
  * Validates the extension (drag-drop bypasses the dialog's filter), starts
- * the pipeline, then surfaces duplicates and runtime errors through
- * `onError`. `onAdded` is always invoked once with the new id (or `null` on
+ * the pipeline, then surfaces validation problems (bad extension, duplicate)
+ * through `onError` and unexpected backend failures through the global
+ * error modal (`reportError`). `onAdded` is always invoked once with the new id (or `null` on
  * failure) so the caller can settle any pending UI state.
  */
 export async function importLocalPath(
@@ -41,7 +43,7 @@ export async function importLocalPath(
     if (result.duplicate) onError?.("This track is already in your library");
     await onAdded(result.id);
   } catch (e) {
-    onError?.(String(e));
+    reportError("Couldn't import file", e, { Path: path });
     await onAdded(null);
   }
 }

@@ -22,6 +22,7 @@
   } from "./commands";
   import type { Track, PipelineEvent, ProgressMap } from "./types";
   import { PENDING_ID, EVENT_PIPELINE, SortKey } from "./constants";
+  import { reportError } from "./errorReport.svelte";
 
   interface Props {
     tracks?: Track[];
@@ -62,6 +63,18 @@
         ...progress,
         [track_id]: { stage, status, message },
       };
+      if (status === "error") {
+        const title = tracks.find((t) => t.id === track_id)?.title;
+        reportError(
+          `Processing failed (${stage})`,
+          message ?? "unknown error",
+          {
+            Track: title ?? track_id,
+            "Track ID": track_id,
+            Stage: stage,
+          },
+        );
+      }
       // Refresh from DB whenever any stage finishes or errors
       if (status === "done" || status === "error") {
         refreshTracks();
@@ -98,12 +111,11 @@
       trimmedArtist === (track.artist ?? null)
     )
       return;
-    editError = "";
     try {
       await updateTrackMeta(track.id, trimmedTitle, trimmedArtist);
       await refreshTracks();
     } catch (e) {
-      editError = String(e);
+      reportError("Couldn't rename track", e, { "Track ID": track.id });
       await refreshTracks();
     }
   }
@@ -117,10 +129,7 @@
     }
   }
 
-  let editError = $state("");
-
   let exportingId: string | null = $state(null);
-  let exportError = $state("");
 
   async function exportStems(track: Track): Promise<void> {
     const dest = await openDialog({
@@ -129,31 +138,27 @@
     });
     if (!dest) return;
     exportingId = track.id;
-    exportError = "";
     try {
       await exportStemsCmd(track.id, dest);
       await refreshTracks();
     } catch (e) {
-      exportError = String(e);
+      reportError("Export failed", e, { "Track ID": track.id });
     } finally {
       exportingId = null;
     }
   }
 
-  let deleteError = $state("");
   let deletingId: string | null = $state(null);
 
   let retryingId: string | null = $state(null);
-  let retryError = $state("");
 
   async function retryTrack(track: Track): Promise<void> {
     retryingId = track.id;
-    retryError = "";
     try {
       await retryTrackCmd(track.id);
       await refreshTracks();
     } catch (e) {
-      retryError = String(e);
+      reportError("Retry failed", e, { "Track ID": track.id });
     } finally {
       retryingId = null;
     }
@@ -171,7 +176,6 @@
     );
     if (!ok) return;
     deletingId = track.id;
-    deleteError = "";
     try {
       await deleteTrackCmd(track.id);
       tracks = tracks.filter((t) => t.id !== track.id);
@@ -179,7 +183,7 @@
         Object.entries(progress).filter(([k]) => k !== String(track.id)),
       );
     } catch (e) {
-      deleteError = String(e);
+      reportError("Couldn't delete track", e, { "Track ID": track.id });
     } finally {
       deletingId = null;
     }
@@ -189,8 +193,29 @@
     try {
       await openFolderCmd(path);
     } catch (e) {
-      exportError = String(e);
+      reportError("Couldn't open folder", e, { Path: path });
     }
+  }
+
+  /** Re-open the error modal for a failed row (e.g. after an app restart). */
+  function showTrackError(track: Track): void {
+    const p = progress[track.id];
+    const stage =
+      p?.status === "error"
+        ? p.stage
+        : (["download", "stems", "analysis"] as const).find(
+            (s) => track[`status_${s}`] === "error",
+          );
+    const message =
+      (p?.status === "error" ? p.message : null) ??
+      track.error_message ??
+      "unknown error";
+    reportError(`Processing failed${stage ? ` (${stage})` : ""}`, message, {
+      Track: track.title,
+      "Track ID": track.id,
+      ...(stage ? { Stage: stage } : {}),
+      Source: track.source_type,
+    });
   }
 
   function isProcessing(track: Track): boolean {
@@ -292,42 +317,6 @@
       <span class="col-label actions-label">Actions</span>
     </div>
     <div class="tracks-scroll">
-      {#if editError}
-        <p class="export-error">
-          {editError}
-          <button class="dismiss-error" onclick={() => (editError = "")}
-            >×</button
-          >
-        </p>
-      {/if}
-
-      {#if deleteError}
-        <p class="export-error">
-          {deleteError}
-          <button class="dismiss-error" onclick={() => (deleteError = "")}
-            >×</button
-          >
-        </p>
-      {/if}
-
-      {#if exportError}
-        <p class="export-error">
-          {exportError}
-          <button class="dismiss-error" onclick={() => (exportError = "")}
-            >×</button
-          >
-        </p>
-      {/if}
-
-      {#if retryError}
-        <p class="export-error">
-          {retryError}
-          <button class="dismiss-error" onclick={() => (retryError = "")}
-            >×</button
-          >
-        </p>
-      {/if}
-
       {#if tracks.length === 0}
         <p class="empty">
           No tracks yet. Add a YouTube URL or open a local file.
@@ -410,10 +399,24 @@
               {formatTime(track.duration_ms / 1000)}
             {/if}
           </div>
-          <div class="track-status">
-            <span class="status-dot {statusDotClass(track)}"></span>
-            <span class="status-text">{statusText(track)}</span>
-          </div>
+          {#if hasError(track, progress)}
+            <button
+              class="track-status status-error-btn"
+              title="Show error details"
+              onclick={(e) => {
+                e.stopPropagation();
+                showTrackError(track);
+              }}
+            >
+              <span class="status-dot error"></span>
+              <span class="status-text">{statusText(track)}</span>
+            </button>
+          {:else}
+            <div class="track-status">
+              <span class="status-dot {statusDotClass(track)}"></span>
+              <span class="status-text">{statusText(track)}</span>
+            </div>
+          {/if}
           <div class="track-actions">
             {#if track.id !== PENDING_ID}
               {#if isReady(track)}
@@ -716,27 +719,6 @@
     flex-direction: column;
   }
 
-  .export-error {
-    font-size: 12px;
-    color: var(--color-error);
-    margin: 0 0 6px;
-  }
-
-  .dismiss-error {
-    background: none;
-    border: none;
-    color: var(--color-error);
-    cursor: pointer;
-    font-size: 14px;
-    padding: 0 0 0 4px;
-    line-height: 1;
-    opacity: 0.7;
-  }
-
-  .dismiss-error:hover {
-    opacity: 1;
-  }
-
   .empty {
     color: var(--fg-muted);
     font-size: 13px;
@@ -834,6 +816,20 @@
     align-items: center;
     gap: 8px;
     min-width: 0;
+  }
+
+  .status-error-btn {
+    padding: 0;
+    border: none;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .status-error-btn:hover .status-text {
+    text-decoration: underline;
   }
 
   .status-dot {
