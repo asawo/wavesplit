@@ -11,7 +11,7 @@ env:
   # that a pinned yt-dlp routinely goes stale and starts failing downloads with
   # "HTTP Error 403: Forbidden" within weeks. ffmpeg/ffprobe just decode/encode audio,
   # a stable job that doesn't rot the same way, so those stay pinned for reproducibility.
-  FFMPEG_MACOS_VERSION: "7.1.1"    # x86_64: https://evermeet.cx/ffmpeg/ | arm64: https://www.osxexperts.net/ (zip name drops the dots, e.g. 711)
+  FFMPEG_MACOS_VERSION: "7.1.1"    # arm64 only: https://www.osxexperts.net/ (zip name drops the dots, e.g. 711)
   FFMPEG_LINUX_VERSION: "6.1"      # https://ffbinaries.com/api/v1/versions
   FFMPEG_WIN_VERSION: "8.1"  # pins ffmpeg minor version; uses BtbN "latest" release tag. BtbN only keeps the newest couple of minors there, so bump this when the download 404s
 
@@ -93,10 +93,6 @@ jobs:
             target: aarch64-apple-darwin
             friendly: macos-arm64
             bundles: dmg
-          - os: macos-latest
-            target: x86_64-apple-darwin
-            friendly: macos-x86_64
-            bundles: dmg
           - os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
             friendly: linux-x86_64
@@ -149,28 +145,22 @@ jobs:
         if: matrix.os == 'macos-latest'
         run: |
           mkdir -p core/binaries
-          # yt-dlp — universal binary, runs natively on both arm64 and x86_64.
+          # yt-dlp — universal binary, runs natively on arm64.
           # Always fetch the latest release rather than a pinned version — see the
           # "env:" block comment at the top of this file for why.
           curl -fsSL --retry 3 --retry-all-errors --max-time 120 "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos" \
             -o core/binaries/yt-dlp-${{ matrix.target }}
           chmod +x core/binaries/yt-dlp-${{ matrix.target }}
-          # ffmpeg + ffprobe — native static builds per arch, so no Rosetta dependency
-          # (which macOS now warns about on Apple Silicon).
-          #   x86_64: evermeet.cx  |  arm64: osxexperts.net
-          if [ "${{ matrix.target }}" = "aarch64-apple-darwin" ]; then
-            # osxexperts.net names arm64 zips by version with the dots stripped
-            # (7.1.1 -> 711). The scheme is an informal convention and dot-stripping
-            # can theoretically collide (e.g. 7.1.0 vs 7.10 -> 710), so verify the
-            # exact URL by hand whenever FFMPEG_MACOS_VERSION is bumped. The site is
-            # also bandwidth-throttled, hence the generous --max-time below.
-            ver_nodots="${FFMPEG_MACOS_VERSION//./}"
-            ffmpeg_url="https://www.osxexperts.net/ffmpeg${ver_nodots}arm.zip"
-            ffprobe_url="https://www.osxexperts.net/ffprobe${ver_nodots}arm.zip"
-          else
-            ffmpeg_url="https://evermeet.cx/ffmpeg/ffmpeg-${FFMPEG_MACOS_VERSION}.zip"
-            ffprobe_url="https://evermeet.cx/ffmpeg/ffprobe-${FFMPEG_MACOS_VERSION}.zip"
-          fi
+          # ffmpeg + ffprobe — native arm64 static builds from osxexperts.net, so no
+          # Rosetta dependency (which macOS now warns about on Apple Silicon).
+          # osxexperts.net names arm64 zips by version with the dots stripped
+          # (7.1.1 -> 711). The scheme is an informal convention and dot-stripping
+          # can theoretically collide (e.g. 7.1.0 vs 7.10 -> 710), so verify the
+          # exact URL by hand whenever FFMPEG_MACOS_VERSION is bumped. The site is
+          # also bandwidth-throttled, hence the generous --max-time below.
+          ver_nodots="${FFMPEG_MACOS_VERSION//./}"
+          ffmpeg_url="https://www.osxexperts.net/ffmpeg${ver_nodots}arm.zip"
+          ffprobe_url="https://www.osxexperts.net/ffprobe${ver_nodots}arm.zip"
           curl -fsSL --retry 4 --retry-all-errors --retry-delay 30 --max-time 300 "$ffmpeg_url" -o ffmpeg.zip
           curl -fsSL --retry 4 --retry-all-errors --retry-delay 30 --max-time 300 "$ffprobe_url" -o ffprobe.zip
           unzip -o ffmpeg.zip ffmpeg -d .
@@ -178,10 +168,7 @@ jobs:
           cp ffmpeg core/binaries/ffmpeg-${{ matrix.target }}
           cp ffprobe core/binaries/ffprobe-${{ matrix.target }}
           # Fail the build if the bundled arch doesn't match the target (belt-and-suspenders).
-          case "${{ matrix.target }}" in
-            aarch64-apple-darwin) want=arm64 ;;
-            x86_64-apple-darwin)  want=x86_64 ;;
-          esac
+          want=arm64
           for bin in ffmpeg ffprobe; do
             got=$(lipo -archs "core/binaries/${bin}-${{ matrix.target }}")
             if [ "$got" != "$want" ]; then
