@@ -55,8 +55,6 @@ fn find_checksum(body: &str, asset: &str) -> Option<String> {
 fn asset_name() -> &'static str {
     #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
     return "demucs-macos-arm64";
-    #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
-    return "demucs-macos-x86_64";
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     return "demucs-linux-x86_64";
     #[cfg(all(target_os = "windows", target_arch = "x86_64"))]

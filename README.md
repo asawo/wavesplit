@@ -103,7 +103,7 @@ Click **Export** on any ready track (in the library or the playback screen) to c
 
 ## Installation (macOS)
 
-Download the latest `.dmg` from the [Releases](https://github.com/asawo/wavesplit/releases) page, open it, and drag Wavesplit to your Applications folder.
+Download the latest `.dmg` from the [Releases](https://github.com/asawo/wavesplit/releases) page, open it, and drag Wavesplit to your Applications folder. Apple Silicon (M1 or later) only — Intel macs are not supported.
 
 ### "Apple could not verify Wavesplit is free of malware"
 

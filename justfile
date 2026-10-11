@@ -47,27 +47,12 @@ setup-bins-release:
         chmod +x "$YTDLP_DEST"
     fi
 
-    # ffmpeg + ffprobe: use ffbinaries static build for x86_64.
+    # ffmpeg + ffprobe: only Apple Silicon macs are supported.
     # No static arm64 build is available for macOS from any public source — CI uses
     # the FedericoCarboni/setup-ffmpeg action which handles this. Local release builds
     # on Apple Silicon will use the Homebrew binary (dynamically linked) which works
     # on machines with Homebrew but not on clean installs. Use CI artifacts for distribution.
     case "$TARGET" in
-        x86_64-apple-darwin)
-            FFBIN=$(curl -fsSL https://ffbinaries.com/api/v1/version/latest)
-            for tool in ffmpeg ffprobe; do
-                dest="$BIN_DIR/${tool}-${TARGET}"
-                if [ ! -f "$dest" ]; then
-                    echo "Downloading static $tool (osx-64)..."
-                    URL=$(echo "$FFBIN" | python3 -c "import sys,json; print(json.load(sys.stdin)['bin']['osx-64']['$tool'])")
-                    curl -fsSL "$URL" -o /tmp/${tool}.zip
-                    unzip -o /tmp/${tool}.zip "$tool" -d /tmp
-                    cp /tmp/$tool "$dest"
-                    chmod +x "$dest"
-                    rm /tmp/${tool}.zip /tmp/${tool}
-                fi
-            done
-            ;;
         aarch64-apple-darwin)
             echo "WARNING: no static arm64 ffmpeg available locally — using Homebrew (dynamic)."
             echo "         Local builds will not work on machines without Homebrew. Use CI for distribution."
