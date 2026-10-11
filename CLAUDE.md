@@ -20,6 +20,7 @@ Primary use case: bass player practice with isolated stems.
 - Right pane has a horizontal slide between the Library and Playback screens; clicking the sidebar's Library nav from Playback returns to the library.
 - Add Track is a modal (`AddTrackModal.svelte`) with a YouTube URL pill + Add button on top, and a dashed drop zone below for either click-to-pick or OS drag-and-drop (wired through Tauri's `getCurrentWebview().onDragDropEvent`). Submitting the YouTube URL closes the modal immediately; the in-flight pipeline shows up as a row in the library.
 - No global pipeline toast — per-row status dot in the library is the only in-flight indicator.
+- Errors surface in a global **ErrorModal** (`ErrorModal.svelte`, mounted once in `App.svelte`) with the full message, version/time/context, a "Copy details" button and a "Report on GitHub" button that opens a prefilled issue on `asawo/wavesplit`. Call `reportError(title, error, context?)` from `errorReport.svelte.ts` instead of adding inline error banners. Pipeline `error` events open it automatically; clicking a row's ERROR status reopens it. `window` `error` / `unhandledrejection` are routed there as a last resort.
 
 ## Architecture
 
@@ -59,6 +60,9 @@ Each stage updates the DB and emits a `pipeline` Tauri event `{ track_id, stage,
 | `ui/App.svelte` | Sidebar + content shell, library ↔ playback slide transition, AddTrackModal toggle, screen/selectedTrack state |
 | `ui/lib/Sidebar.svelte` | Persistent left rail: brand + version, Library nav, Add Track button |
 | `ui/lib/AddTrackModal.svelte` | Add Track modal: YouTube URL form + drag-drop / click drop zone |
+| `ui/lib/ErrorModal.svelte` | Global error modal: message, details, copy + GitHub issue buttons; steps through queued errors |
+| `ui/lib/errorReport.svelte.ts` | Global error queue (`errors`, `reportError`, `dismissError`) |
+| `ui/lib/errorReport.helpers.ts` | Pure functions: errorMessage, formatReport, issueUrl |
 | `ui/lib/importTrack.ts` | Shared `importLocalPath` + `pickAndImportLocal`; `ACCEPTED_AUDIO_EXTENSIONS` is the source of truth for file types |
 | `ui/lib/TrackList.svelte` | Library table: search/sort toolbar, Music Library header, grid rows with Track / Artist / Duration / Status / Actions; inline edit, kebab Delete menu, export |
 | `ui/lib/Playback.svelte` | Playback screen: Web Audio engine, waveforms, transport, stem mute/solo/volume, section loop, export |

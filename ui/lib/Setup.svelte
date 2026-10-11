@@ -2,6 +2,7 @@
   import { listen } from "@tauri-apps/api/event";
   import { onDestroy } from "svelte";
   import { downloadDemucs } from "./commands";
+  import { reportError } from "./errorReport.svelte";
   import type { SetupProgress } from "./types";
   import { EVENT_SETUP_PROGRESS } from "./constants";
 
@@ -34,6 +35,7 @@
       onReady();
     } catch (e) {
       error = String(e);
+      reportError("Setup download failed", e);
       downloading = false;
     }
   }

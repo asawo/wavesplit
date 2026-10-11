@@ -5,6 +5,8 @@
   import Setup from "./lib/Setup.svelte";
   import Sidebar from "./lib/Sidebar.svelte";
   import AddTrackModal from "./lib/AddTrackModal.svelte";
+  import ErrorModal from "./lib/ErrorModal.svelte";
+  import { reportError } from "./lib/errorReport.svelte";
   import { checkDemucs } from "./lib/commands";
   import type { Track } from "./lib/types";
   import { PENDING_ID, Screen } from "./lib/constants";
@@ -17,6 +19,13 @@
   let selectedTrack: Track | null = $state(null);
 
   onMount(async () => {
+    // Last-resort net: anything not handled at its call site still surfaces
+    window.addEventListener("error", (e) =>
+      reportError("Unexpected error", e.error ?? e.message),
+    );
+    window.addEventListener("unhandledrejection", (e) =>
+      reportError("Unexpected error", e.reason),
+    );
     try {
       ready = await checkDemucs();
     } catch {
@@ -124,6 +133,8 @@
     <Setup onReady={() => (ready = true)} />
   </div>
 {/if}
+
+<ErrorModal />
 
 <style>
   :global(*) {

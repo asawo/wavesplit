@@ -14,6 +14,7 @@
     exportStems as exportStemsCmd,
     openFolder as openFolderCmd,
   } from "./commands";
+  import { reportError } from "./errorReport.svelte";
   import type { Track, StemKey, StemStateMap } from "./types";
   import {
     MASTER_KEY,
@@ -198,6 +199,10 @@
     } catch (e) {
       if (loadedTrackId === targetId) {
         loadError = e instanceof Error ? e.message : String(e);
+        reportError("Couldn't load audio", e, {
+          Track: track.title,
+          "Track ID": targetId,
+        });
         loadedTrackId = null; // allow retry on next open
       }
     } finally {
@@ -415,7 +420,6 @@
 
   // ── Export ─────────────────────────────────────────────────
   let exportingId: string | null = $state(null);
-  let exportError = $state("");
 
   async function exportStems(): Promise<void> {
     const dest = await openDialog({
@@ -424,13 +428,12 @@
     });
     if (!dest) return;
     exportingId = track.id;
-    exportError = "";
     try {
       await exportStemsCmd(track.id, dest);
       track.export_path = dest;
       await onExportDone?.();
     } catch (e) {
-      exportError = String(e);
+      reportError("Export failed", e, { "Track ID": track.id });
     } finally {
       exportingId = null;
     }
@@ -440,7 +443,7 @@
     try {
       await openFolderCmd(path);
     } catch (e) {
-      exportError = String(e);
+      reportError("Couldn't open folder", e, { Path: path });
     }
   }
 </script>
@@ -705,13 +708,6 @@
 
   <!-- ── Footer ── -->
   <div class="playback-footer">
-    {#if exportError}
-      <span class="export-error"
-        >{exportError}
-        <button class="dismiss-btn" onclick={() => (exportError = "")}>×</button
-        >
-      </span>
-    {/if}
     {#if track.export_path}
       <button
         class="btn open-btn"
@@ -1110,19 +1106,5 @@
     padding: 12px 16px;
     border-top: 1px solid var(--border);
     flex-shrink: 0;
-  }
-
-  .export-error {
-    font-size: 12px;
-    color: var(--color-error);
-  }
-
-  .dismiss-btn {
-    background: none;
-    border: none;
-    color: var(--color-error);
-    cursor: pointer;
-    font-size: 13px;
-    padding: 0 0 0 4px;
   }
 </style>
