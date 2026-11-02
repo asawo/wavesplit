@@ -2,6 +2,36 @@ use std::path::Path;
 
 use super::bins;
 
+/// yt-dlp args for downloading `url` as a WAV at `dest`.
+fn download_args<'a>(ffmpeg_dir: &'a str, dest: &'a str, url: &'a str) -> Vec<&'a str> {
+    vec![
+        "--no-playlist",
+        "--ffmpeg-location",
+        ffmpeg_dir,
+        "-x",
+        "--audio-format",
+        "wav",
+        "--audio-quality",
+        "0",
+        "-o",
+        dest,
+        url,
+    ]
+}
+
+/// yt-dlp args for printing the title of `url` without downloading it.
+fn title_args<'a>(ffmpeg_dir: &'a str, url: &'a str) -> Vec<&'a str> {
+    vec![
+        "--no-playlist",
+        "--ffmpeg-location",
+        ffmpeg_dir,
+        "--print",
+        "title",
+        "--no-download",
+        url,
+    ]
+}
+
 /// For a YouTube URL: download audio and convert to WAV at `dest`.
 pub fn from_youtube(url: &str, dest: &Path) -> Result<(), String> {
     let ffmpeg = bins::resolve("ffmpeg");
@@ -10,18 +40,11 @@ pub fn from_youtube(url: &str, dest: &Path) -> Result<(), String> {
         .map(|p| p.to_path_buf())
         .unwrap_or(ffmpeg.clone());
     let output = bins::command(bins::resolve("yt-dlp"))
-        .args([
-            "--ffmpeg-location",
+        .args(download_args(
             ffmpeg_dir.to_str().ok_or("invalid ffmpeg path")?,
-            "-x",
-            "--audio-format",
-            "wav",
-            "--audio-quality",
-            "0",
-            "-o",
             dest.to_str().ok_or("invalid dest path")?,
             url,
-        ])
+        ))
         .output()
         .map_err(|e| format!("yt-dlp not found or failed to start: {e}"))?;
 
@@ -77,14 +100,7 @@ pub fn youtube_title(url: &str) -> Option<String> {
         .map(|p| p.to_path_buf())
         .unwrap_or(ffmpeg.clone());
     let output = bins::command(bins::resolve("yt-dlp"))
-        .args([
-            "--ffmpeg-location",
-            ffmpeg_dir.to_str()?,
-            "--print",
-            "title",
-            "--no-download",
-            url,
-        ])
+        .args(title_args(ffmpeg_dir.to_str()?, url))
         .output()
         .map_err(|e| {
             tracing::debug!(error = %e, "yt-dlp title extraction failed");
@@ -142,4 +158,23 @@ pub fn probe_duration_ms(src: &Path) -> Result<Option<i64>, String> {
         return Ok(None);
     }
     Ok(Some((seconds * 1000.0).round() as i64))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const WATCH_URL_IN_PLAYLIST: &str = "https://www.youtube.com/watch?v=abc&list=PLxyz";
+
+    #[test]
+    fn download_args_ignore_playlist_in_url() {
+        let args = download_args("/bin", "/tmp/source.wav", WATCH_URL_IN_PLAYLIST);
+        assert!(args.contains(&"--no-playlist"), "got: {args:?}");
+    }
+
+    #[test]
+    fn title_args_ignore_playlist_in_url() {
+        let args = title_args("/bin", WATCH_URL_IN_PLAYLIST);
+        assert!(args.contains(&"--no-playlist"), "got: {args:?}");
+    }
 }
